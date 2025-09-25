@@ -43,6 +43,66 @@ const app = new Hono<{ Bindings: Env; Variables: { auth: AuthRequestState; userI
 
 const clerkClientCache = new Map<string, ReturnType<typeof createClerkClient>>();
 
+let schemaInitializationPromise: Promise<void> | null = null;
+
+const ensureDatabaseSchema = (db: D1Database) => {
+  if (!schemaInitializationPromise) {
+    schemaInitializationPromise = (async () => {
+      const statements = [
+        `CREATE TABLE IF NOT EXISTS user_configs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id TEXT NOT NULL,
+          config_key TEXT NOT NULL,
+          config_value TEXT NOT NULL,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_user_configs_user_key ON user_configs(user_id, config_key)`,
+        `CREATE TABLE IF NOT EXISTS pluggy_connections (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id TEXT NOT NULL,
+          pluggy_item_id TEXT NOT NULL,
+          institution_name TEXT,
+          connection_status TEXT,
+          last_sync_at TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(user_id, pluggy_item_id)
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_pluggy_connections_user ON pluggy_connections(user_id)`,
+        `CREATE TABLE IF NOT EXISTS webhook_configs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id TEXT NOT NULL UNIQUE,
+          webhook_url TEXT NOT NULL,
+          events TEXT,
+          is_active INTEGER DEFAULT 1,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )`,
+        `CREATE TABLE IF NOT EXISTS webhook_logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          webhook_id TEXT NOT NULL,
+          success INTEGER NOT NULL,
+          error_message TEXT,
+          attempt_at TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )`,
+        `CREATE INDEX IF NOT EXISTS idx_webhook_logs_webhook_id ON webhook_logs(webhook_id)`,
+        `CREATE INDEX IF NOT EXISTS idx_webhook_logs_created_at ON webhook_logs(created_at)`
+      ];
+
+      for (const statement of statements) {
+        await db.prepare(statement).run();
+      }
+    })().catch(error => {
+      schemaInitializationPromise = null;
+      throw error;
+    });
+  }
+
+  return schemaInitializationPromise;
+};
+
 const getClerkClient = (env: Env) => {
   const secretKey = env.CLERK_SECRET_KEY;
 
@@ -59,6 +119,12 @@ const getClerkClient = (env: Env) => {
   clerkClientCache.set(secretKey, client);
   return client;
 };
+
+// Ensure auxiliary tables exist before handling requests
+app.use('*', async (c, next) => {
+  await ensureDatabaseSchema(c.env.DB);
+  await next();
+});
 
 // Enhanced CORS configuration
 app.use('*', cors({
