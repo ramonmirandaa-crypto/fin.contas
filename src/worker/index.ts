@@ -1690,59 +1690,65 @@ app.get('/api/pluggy/connections', authMiddleware, async (c) => {
   }
 });
 
-app.get('/api/pluggy/config', authMiddleware, async (c) => {
-  const userId = getUserId(c);
+app.all('/api/pluggy/config', authMiddleware, async (c) => {
+  const method = c.req.method.toUpperCase();
 
-  try {
-    const stmt = c.env.DB.prepare("SELECT config_value FROM user_configs WHERE user_id = ? AND config_key = 'pluggy_client_id'");
-    const clientIdResult = await stmt.bind(userId).first() as any;
-    
-    const stmt2 = c.env.DB.prepare("SELECT config_value FROM user_configs WHERE user_id = ? AND config_key = 'pluggy_client_secret'");
-    const clientSecretResult = await stmt2.bind(userId).first() as any;
-    
-    return Response.json({
-      clientId: (clientIdResult?.config_value as string) || '',
-      clientSecret: (clientSecretResult?.config_value as string) || ''
-    });
-  } catch (error) {
-    console.error('Error loading pluggy config:', error);
-    return errorResponse('Failed to load config', 500);
+  if (method === 'OPTIONS') {
+    return new Response(null, { status: 204 });
   }
-});
 
-app.post('/api/pluggy/config', authMiddleware, async (c) => {
   const userId = getUserId(c);
 
-  try {
-    const { clientId, clientSecret } = await c.req.json();
-    
-    if (!clientId?.trim() || !clientSecret?.trim()) {
-      return errorResponse('Client ID and Client Secret are required', 400);
+  if (method === 'GET') {
+    try {
+      const stmt = c.env.DB.prepare("SELECT config_value FROM user_configs WHERE user_id = ? AND config_key = 'pluggy_client_id'");
+      const clientIdResult = await stmt.bind(userId).first() as any;
+
+      const stmt2 = c.env.DB.prepare("SELECT config_value FROM user_configs WHERE user_id = ? AND config_key = 'pluggy_client_secret'");
+      const clientSecretResult = await stmt2.bind(userId).first() as any;
+
+      return Response.json({
+        clientId: (clientIdResult?.config_value as string) || '',
+        clientSecret: (clientSecretResult?.config_value as string) || ''
+      });
+    } catch (error) {
+      console.error('Error loading pluggy config:', error);
+      return errorResponse('Failed to load config', 500);
     }
-
-    // Upsert client ID
-    await c.env.DB.prepare(`
-      INSERT INTO user_configs (user_id, config_key, config_value, created_at, updated_at)
-      VALUES (?, 'pluggy_client_id', ?, datetime('now'), datetime('now'))
-      ON CONFLICT(user_id, config_key) DO UPDATE SET
-        config_value = excluded.config_value,
-        updated_at = excluded.updated_at
-    `).bind(userId, clientId.trim()).run();
-
-    // Upsert client secret
-    await c.env.DB.prepare(`
-      INSERT INTO user_configs (user_id, config_key, config_value, created_at, updated_at)
-      VALUES (?, 'pluggy_client_secret', ?, datetime('now'), datetime('now'))
-      ON CONFLICT(user_id, config_key) DO UPDATE SET
-        config_value = excluded.config_value,
-        updated_at = excluded.updated_at
-    `).bind(userId, clientSecret.trim()).run();
-
-    return Response.json({ success: true });
-  } catch (error) {
-    console.error('Error saving pluggy config:', error);
-    return errorResponse('Failed to save config', 500);
   }
+
+  if (method === 'POST') {
+    try {
+      const { clientId, clientSecret } = await c.req.json();
+
+      if (!clientId?.trim() || !clientSecret?.trim()) {
+        return errorResponse('Client ID and Client Secret are required', 400);
+      }
+
+      await c.env.DB.prepare(`
+        INSERT INTO user_configs (user_id, config_key, config_value, created_at, updated_at)
+        VALUES (?, 'pluggy_client_id', ?, datetime('now'), datetime('now'))
+        ON CONFLICT(user_id, config_key) DO UPDATE SET
+          config_value = excluded.config_value,
+          updated_at = excluded.updated_at
+      `).bind(userId, clientId.trim()).run();
+
+      await c.env.DB.prepare(`
+        INSERT INTO user_configs (user_id, config_key, config_value, created_at, updated_at)
+        VALUES (?, 'pluggy_client_secret', ?, datetime('now'), datetime('now'))
+        ON CONFLICT(user_id, config_key) DO UPDATE SET
+          config_value = excluded.config_value,
+          updated_at = excluded.updated_at
+      `).bind(userId, clientSecret.trim()).run();
+
+      return Response.json({ success: true });
+    } catch (error) {
+      console.error('Error saving pluggy config:', error);
+      return errorResponse('Failed to save config', 500);
+    }
+  }
+
+  return errorResponse('Method not allowed', 405);
 });
 
 app.post('/api/pluggy/test-connection', authMiddleware, async (c) => {
