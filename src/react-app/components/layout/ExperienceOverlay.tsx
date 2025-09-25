@@ -54,12 +54,18 @@ export default function ExperienceOverlay({
         aria-labelledby="experience-overlay-title"
         className="relative w-full max-w-5xl overflow-hidden rounded-3xl border border-emerald-100 bg-white p-6 shadow-2xl"
       >
-        <div className="absolute -top-40 -left-32 h-80 w-80 rounded-full bg-emerald-100 blur-3xl" aria-hidden="true" />
-        <div className="absolute -bottom-32 -right-20 h-72 w-72 rounded-full bg-cyan-100 blur-3xl" aria-hidden="true" />
+        <div
+          className="pointer-events-none absolute -top-40 -left-32 h-80 w-80 rounded-full bg-emerald-100 blur-3xl"
+          aria-hidden="true"
+        />
+        <div
+          className="pointer-events-none absolute -bottom-32 -right-20 h-72 w-72 rounded-full bg-cyan-100 blur-3xl"
+          aria-hidden="true"
+        />
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-6 top-6 rounded-full border border-emerald-100 bg-white p-2 text-slate-500 transition hover:bg-emerald-50 hover:text-emerald-700"
+          className="absolute right-6 top-6 z-10 rounded-full border border-emerald-100 bg-white p-2 text-slate-500 transition hover:bg-emerald-50 hover:text-emerald-700"
           aria-label="Fechar visualização"
         >
           <X className="h-5 w-5" />
