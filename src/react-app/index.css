@@ -65,7 +65,7 @@
 }
 
 body {
-  background: linear-gradient(180deg, #f3faf5 0%, #ffffff 35%, #f8fbff 100%);
+  background: linear-gradient(180deg, #eef4ff 0%, #ffffff 40%, #f3f6ff 100%);
   color: #0f172a;
   min-height: 100vh;
   color-scheme: light;
