@@ -1811,9 +1811,9 @@ app.post('/api/pluggy/add-connection', authMiddleware, async (c) => {
     `);
     
     await insertStmt.bind(
-      userId, 
-      itemId.trim(), 
-      item.connector.name || 'Unknown Institution', 
+      userId,
+      itemId.trim(),
+      item.connector?.name?.trim() || item.clientUserId || 'Unknown Institution',
       item.status || 'CONNECTED'
     ).run();
 
