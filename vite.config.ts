@@ -1,8 +1,9 @@
-import "./vite.polyfills.js";
+await import("./vite.polyfills.js");
 import path from "path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { cloudflare } from "@cloudflare/vite-plugin";
+
+const { cloudflare } = await import("@cloudflare/vite-plugin");
 
 export default defineConfig({
   plugins: [react(), cloudflare()],

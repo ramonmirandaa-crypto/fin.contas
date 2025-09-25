@@ -14,11 +14,6 @@ type BlobLike = {
 
 type BlobConstructor = new (...args: unknown[]) => BlobLike;
 
-declare global {
-  // eslint-disable-next-line no-var
-  var File: unknown;
-}
-
 if (typeof (globalThis as { File?: unknown }).File === "undefined") {
   const BlobCtor = (globalThis as { Blob?: BlobConstructor }).Blob;
 
