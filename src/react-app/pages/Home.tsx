@@ -161,7 +161,7 @@ export default function Home() {
         const usedLimit = creditCardList.reduce((sum, card) => sum + (card.current_balance ?? 0), 0);
 
         const today = new Date();
-        let nextDueDate: Date | null = null;
+        let nextDueDateTimestamp: number | null = null;
 
         creditCardList.forEach(card => {
           const dueDay = card.due_day ?? 1;
@@ -169,17 +169,21 @@ export default function Home() {
           if (candidate < today) {
             candidate.setMonth(candidate.getMonth() + 1);
           }
-          if (!nextDueDate || candidate < nextDueDate) {
-            nextDueDate = candidate;
+          const candidateTimestamp = candidate.getTime();
+          if (nextDueDateTimestamp === null || candidateTimestamp < nextDueDateTimestamp) {
+            nextDueDateTimestamp = candidateTimestamp;
           }
         });
+
+        const nextDueDateIso =
+          nextDueDateTimestamp !== null ? new Date(nextDueDateTimestamp).toISOString() : null;
 
         setCreditCardSummary({
           totalCards: creditCardList.length,
           totalLimit,
           usedLimit,
           availableCredit: totalLimit - usedLimit,
-          nextDueDate: nextDueDate ? nextDueDate.toISOString() : null,
+          nextDueDate: nextDueDateIso,
           cards: creditCardList.map(card => ({
             id: card.id,
             name: card.name,
