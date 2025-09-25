@@ -11,7 +11,7 @@
     "paths": {
       "@/*": ["./src/*"]
     },
-    "types": ["react"],
+    "types": ["react", "vite/client"],
     "typeRoots": ["./src/react-app/types", "./node_modules/@types"],
 
     /* Bundler mode */
