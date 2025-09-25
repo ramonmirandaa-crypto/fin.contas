@@ -12,14 +12,14 @@ const GoogleIcon = () => (
 
 export default function LoginPrompt() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 paper-texture flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-indigo-50 to-blue-50 paper-texture flex items-center justify-center px-4">
       <div className="max-w-md w-full">
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-white/50 p-8 text-center">
-          <div className="bg-gradient-to-br from-emerald-500 to-teal-600 p-4 rounded-2xl shadow-lg mx-auto w-fit mb-6">
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-white/60 p-8 text-center">
+          <div className="bg-gradient-to-br from-sky-500 to-blue-600 p-4 rounded-2xl shadow-lg mx-auto w-fit mb-6">
             <Wallet className="w-12 h-12 text-white" />
           </div>
-          
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent mb-2">
+
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-sky-600 to-blue-600 bg-clip-text text-transparent mb-2">
             Financeito
           </h1>
           <p className="text-gray-600 mb-8">
@@ -27,24 +27,24 @@ export default function LoginPrompt() {
           </p>
 
           <div className="space-y-4 mb-8">
-            <div className="flex items-center gap-3 p-4 bg-emerald-50 rounded-xl">
-              <Shield className="w-6 h-6 text-emerald-600" />
+            <div className="flex items-center gap-3 p-4 bg-sky-50 rounded-xl">
+              <Shield className="w-6 h-6 text-sky-600" />
               <div className="text-left">
                 <h3 className="font-semibold text-gray-900">Seguro e Privado</h3>
                 <p className="text-sm text-gray-600">Seus dados financeiros estão protegidos</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3 p-4 bg-emerald-50 rounded-xl">
-              <Brain className="w-6 h-6 text-emerald-600" />
+            <div className="flex items-center gap-3 p-4 bg-sky-50 rounded-xl">
+              <Brain className="w-6 h-6 text-sky-600" />
               <div className="text-left">
                 <h3 className="font-semibold text-gray-900">Insights com IA</h3>
                 <p className="text-sm text-gray-600">Receba dicas personalizadas de gastos</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3 p-4 bg-emerald-50 rounded-xl">
-              <Wallet className="w-6 h-6 text-emerald-600" />
+            <div className="flex items-center gap-3 p-4 bg-sky-50 rounded-xl">
+              <Wallet className="w-6 h-6 text-sky-600" />
               <div className="text-left">
                 <h3 className="font-semibold text-gray-900">Rastreamento Inteligente</h3>
                 <p className="text-sm text-gray-600">Categorização automática de gastos</p>
@@ -53,7 +53,7 @@ export default function LoginPrompt() {
           </div>
 
           <SignInButton mode="modal" forceRedirectUrl="/" signUpForceRedirectUrl="/">
-            <button className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-semibold hover:from-emerald-600 hover:to-teal-700 transition-all duration-200 shadow-lg hover:shadow-xl">
+            <button className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-gradient-to-r from-sky-500 to-blue-600 text-white rounded-xl font-semibold hover:from-sky-600 hover:to-blue-700 transition-all duration-200 shadow-lg hover:shadow-xl">
               <GoogleIcon />
               Entrar ou criar conta
             </button>
