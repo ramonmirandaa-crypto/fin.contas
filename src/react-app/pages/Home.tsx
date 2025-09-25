@@ -1,19 +1,64 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useUser } from '@clerk/clerk-react';
-import { Brain, Briefcase, CalendarClock, CreditCard, HomeIcon, Settings, TrendingUp, Wallet2, Bell } from 'lucide-react';
+import {
+  Bell,
+  Brain,
+  Briefcase,
+  CalendarClock,
+  CreditCard,
+  HomeIcon,
+  Receipt,
+  RefreshCw,
+  Settings,
+  TrendingUp,
+  Wallet2,
+  Zap,
+} from 'lucide-react';
 import AuthButton from '@/react-app/components/AuthButton';
 import ExperienceOverlay from '@/react-app/components/layout/ExperienceOverlay';
 import LoginPrompt from '@/react-app/components/LoginPrompt';
 import { useExpenses } from '@/react-app/hooks/useExpenses';
 import { buildOverlayConfig } from './homeConfig';
-import type { CreateExpense } from '@/shared/types';
+import type { Account, CreateExpense, CreditCard as CreditCardType } from '@/shared/types';
 import type { OverlayView } from '@/react-app/components/sections/FinancePreviewSection';
 import { formatCurrency, formatDate } from '@/react-app/utils';
+import { apiFetch } from '@/react-app/utils/api';
+
+interface OpenFinanceSummary {
+  totalAccounts: number;
+  pluggyConnections: number;
+  institutions: string[];
+  lastSyncAt: string | null;
+  autoSyncEnabled: number;
+  totalBalance: number;
+}
+
+interface CreditCardPreview {
+  id: number;
+  name: string;
+  limit: number;
+  balance: number;
+  dueDay: number;
+  utilization: number;
+}
+
+interface CreditCardSummary {
+  totalCards: number;
+  totalLimit: number;
+  usedLimit: number;
+  availableCredit: number;
+  nextDueDate: string | null;
+  cards: CreditCardPreview[];
+}
 
 export default function Home() {
   const { user, isLoaded, isSignedIn } = useUser();
   const [refreshInsights, setRefreshInsights] = useState(0);
   const [activeOverlay, setActiveOverlay] = useState<OverlayView | null>(null);
+  const [financeSummaryRefreshKey, setFinanceSummaryRefreshKey] = useState(0);
+  const [financeSummaryLoading, setFinanceSummaryLoading] = useState(true);
+  const [openFinanceSummary, setOpenFinanceSummary] = useState<OpenFinanceSummary | null>(null);
+  const [creditCardSummary, setCreditCardSummary] = useState<CreditCardSummary | null>(null);
 
   const userName = useMemo(() => {
     if (!user) {
@@ -39,6 +84,134 @@ export default function Home() {
   const { expenses, submitting, metrics, addExpense } = useExpenses({ enabled: Boolean(user && isSignedIn) });
   const { totalExpenses, thisMonthExpenses, avgDailySpending } = metrics;
 
+  useEffect(() => {
+    if (!isSignedIn) {
+      setOpenFinanceSummary(null);
+      setCreditCardSummary(null);
+      setFinanceSummaryLoading(false);
+      return;
+    }
+
+    let isCancelled = false;
+
+    const loadFinanceSummaries = async () => {
+      setFinanceSummaryLoading(true);
+
+      try {
+        const [accountsResponse, creditCardsResponse] = await Promise.all([
+          apiFetch('/api/accounts'),
+          apiFetch('/api/credit-cards'),
+        ]);
+
+        if (isCancelled) {
+          return;
+        }
+
+        const accountsPayload = accountsResponse.ok ? await accountsResponse.json() : {};
+        const creditCardsPayload = creditCardsResponse.ok ? await creditCardsResponse.json() : {};
+
+        if (isCancelled) {
+          return;
+        }
+
+        const accountsList: Account[] = Array.isArray(accountsPayload.accounts)
+          ? accountsPayload.accounts
+          : [];
+        const creditCardList: CreditCardType[] = Array.isArray(creditCardsPayload.creditCards)
+          ? creditCardsPayload.creditCards
+          : [];
+
+        const uniqueInstitutions = new Set<string>();
+        const pluggyItems = new Set<string>();
+        let totalBalance = 0;
+        let syncEnabledCount = 0;
+        let latestSync: string | null = null;
+
+        accountsList.forEach(account => {
+          totalBalance += account.balance ?? 0;
+          if (account.sync_enabled) {
+            syncEnabledCount += 1;
+          }
+          if (account.pluggy_item_id) {
+            pluggyItems.add(account.pluggy_item_id);
+          }
+
+          const institutionLabel = account.institution_name || account.marketing_name || account.name;
+          if (institutionLabel) {
+            uniqueInstitutions.add(institutionLabel);
+          }
+
+          if (account.last_sync_at) {
+            if (!latestSync || new Date(account.last_sync_at) > new Date(latestSync)) {
+              latestSync = account.last_sync_at;
+            }
+          }
+        });
+
+        setOpenFinanceSummary({
+          totalAccounts: accountsList.length,
+          pluggyConnections: pluggyItems.size,
+          institutions: Array.from(uniqueInstitutions),
+          lastSyncAt: latestSync,
+          autoSyncEnabled: syncEnabledCount,
+          totalBalance,
+        });
+
+        const totalLimit = creditCardList.reduce((sum, card) => sum + (card.credit_limit ?? 0), 0);
+        const usedLimit = creditCardList.reduce((sum, card) => sum + (card.current_balance ?? 0), 0);
+
+        const today = new Date();
+        let nextDueDate: Date | null = null;
+
+        creditCardList.forEach(card => {
+          const dueDay = card.due_day ?? 1;
+          const candidate = new Date(today.getFullYear(), today.getMonth(), dueDay);
+          if (candidate < today) {
+            candidate.setMonth(candidate.getMonth() + 1);
+          }
+          if (!nextDueDate || candidate < nextDueDate) {
+            nextDueDate = candidate;
+          }
+        });
+
+        setCreditCardSummary({
+          totalCards: creditCardList.length,
+          totalLimit,
+          usedLimit,
+          availableCredit: totalLimit - usedLimit,
+          nextDueDate: nextDueDate ? nextDueDate.toISOString() : null,
+          cards: creditCardList.map(card => ({
+            id: card.id,
+            name: card.name,
+            limit: card.credit_limit ?? 0,
+            balance: card.current_balance ?? 0,
+            dueDay: card.due_day ?? 1,
+            utilization:
+              card.credit_limit && card.credit_limit > 0
+                ? Math.min((card.current_balance / card.credit_limit) * 100, 999)
+                : 0,
+          })),
+        });
+      } catch (error) {
+        if (!isCancelled) {
+          console.error('Erro ao carregar resumos financeiros:', error);
+          setOpenFinanceSummary(null);
+          setCreditCardSummary(null);
+        }
+      } finally {
+        if (!isCancelled) {
+          setFinanceSummaryLoading(false);
+        }
+      }
+    };
+
+    void loadFinanceSummaries();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isSignedIn, financeSummaryRefreshKey]);
+
   const handleRefreshInsights = useCallback(() => {
     setRefreshInsights(previous => previous + 1);
   }, []);
@@ -62,6 +235,10 @@ export default function Home() {
     setActiveOverlay(null);
   }, []);
 
+  const handleRefreshFinanceSummary = useCallback(() => {
+    setFinanceSummaryRefreshKey(previous => previous + 1);
+  }, []);
+
   const overlayConfig = useMemo(
     () =>
       buildOverlayConfig({
@@ -74,6 +251,38 @@ export default function Home() {
   );
 
   const activeOverlayConfig = activeOverlay ? overlayConfig[activeOverlay] : null;
+
+  const openFinanceLastSyncLabel = useMemo(() => {
+    if (!openFinanceSummary?.lastSyncAt) {
+      return 'Sincronize suas contas para trazer saldos atualizados.';
+    }
+
+    const date = new Date(openFinanceSummary.lastSyncAt);
+    return `Última sincronização em ${date.toLocaleDateString('pt-BR')} às ${date.toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })}`;
+  }, [openFinanceSummary?.lastSyncAt]);
+
+  const creditCardsPreview: CreditCardPreview[] = useMemo(() => {
+    if (!creditCardSummary) {
+      return [];
+    }
+
+    return creditCardSummary.cards.slice(0, 3);
+  }, [creditCardSummary]);
+
+  const nextDueDateLabel = useMemo(() => {
+    if (!creditCardSummary?.nextDueDate) {
+      return null;
+    }
+
+    const date = new Date(creditCardSummary.nextDueDate);
+    return date.toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: 'long',
+    });
+  }, [creditCardSummary?.nextDueDate]);
 
   if (!isLoaded) {
     return (
@@ -146,7 +355,7 @@ export default function Home() {
             onClick={() => handleOpenOverlay('transactions')}
             className="flex items-center gap-3 rounded-2xl px-4 py-3 transition hover:bg-slate-100"
           >
-            <CreditCard className="h-4 w-4 text-sky-500" />
+            <Receipt className="h-4 w-4 text-sky-500" />
             Transações
           </button>
           <button
@@ -156,6 +365,22 @@ export default function Home() {
           >
             <Briefcase className="h-4 w-4 text-sky-500" />
             Contas conectadas
+          </button>
+          <button
+            type="button"
+            onClick={() => handleOpenOverlay('banking')}
+            className="flex items-center gap-3 rounded-2xl px-4 py-3 transition hover:bg-slate-100"
+          >
+            <Zap className="h-4 w-4 text-sky-500" />
+            Open Finance
+          </button>
+          <button
+            type="button"
+            onClick={() => handleOpenOverlay('credit-cards')}
+            className="flex items-center gap-3 rounded-2xl px-4 py-3 transition hover:bg-slate-100"
+          >
+            <CreditCard className="h-4 w-4 text-sky-500" />
+            Cartões de crédito
           </button>
           <button
             type="button"
@@ -372,6 +597,251 @@ export default function Home() {
                   <Settings className="h-4 w-4 text-sky-500" />
                 </button>
               </div>
+            </div>
+          </section>
+
+          <section className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
+            <div className="flex flex-col gap-6 rounded-4xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900">Integrações Open Finance</h2>
+                  <p className="text-sm text-slate-500">
+                    Conecte instituições, acompanhe saldos e mantenha suas contas atualizadas automaticamente.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleRefreshFinanceSummary}
+                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-700 transition hover:border-sky-200 hover:text-sky-600"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${financeSummaryLoading ? 'animate-spin' : ''}`} />
+                    Atualizar dados
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenOverlay('banking')}
+                    className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-lg transition hover:from-sky-600 hover:to-blue-700"
+                  >
+                    <Zap className="h-4 w-4" />
+                    Gerenciar conexões
+                  </button>
+                </div>
+              </div>
+
+              {financeSummaryLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map(item => (
+                    <div key={item} className="h-20 animate-pulse rounded-3xl bg-slate-100" />
+                  ))}
+                </div>
+              ) : openFinanceSummary && openFinanceSummary.totalAccounts > 0 ? (
+                <>
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+                        Contas monitoradas
+                      </p>
+                      <p className="mt-2 text-2xl font-semibold text-slate-900">{openFinanceSummary.totalAccounts}</p>
+                      <p className="text-xs text-slate-500">
+                        {openFinanceSummary.autoSyncEnabled} com sincronização automática
+                      </p>
+                    </div>
+                    <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
+                        Instituições conectadas
+                      </p>
+                      <p className="mt-2 text-2xl font-semibold text-slate-900">{openFinanceSummary.pluggyConnections}</p>
+                      <p className="text-xs text-slate-500">Infraestrutura Open Finance Pluggy</p>
+                    </div>
+                    <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">Saldo consolidado</p>
+                      <p className="mt-2 text-2xl font-semibold text-slate-900">
+                        {formatCurrency(openFinanceSummary.totalBalance)}
+                      </p>
+                      <p className="text-xs text-slate-500">Atualizado pelas contas conectadas</p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {openFinanceSummary.institutions.slice(0, 6).map(institution => (
+                      <span
+                        key={institution}
+                        className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600"
+                      >
+                        <span className="h-2 w-2 rounded-full bg-sky-500" aria-hidden="true" />
+                        {institution}
+                      </span>
+                    ))}
+                    {openFinanceSummary.institutions.length > 6 && (
+                      <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+                        +{openFinanceSummary.institutions.length - 6} instituições
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-3 rounded-3xl border border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-600">
+                    <p>{openFinanceLastSyncLabel}</p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenOverlay('accounts')}
+                        className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-700 transition hover:border-sky-200 hover:text-sky-600"
+                      >
+                        Ver contas conectadas
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenOverlay('transactions')}
+                        className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-700 transition hover:border-sky-200 hover:text-sky-600"
+                      >
+                        Revisar transações importadas
+                      </button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-3xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
+                  Conecte suas contas bancárias e cartões via Open Finance para acompanhar saldos em tempo real.
+                  <div className="mt-4 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenOverlay('banking')}
+                      className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-lg transition hover:from-sky-600 hover:to-blue-700"
+                    >
+                      <Zap className="h-4 w-4" />
+                      Iniciar conexão
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-6 rounded-4xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900">Cartões de crédito</h2>
+                  <p className="text-sm text-slate-500">
+                    Visualize limites, acompanhe faturas e mantenha o uso dos cartões sob controle.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleOpenOverlay('credit-cards')}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-lg transition hover:from-violet-600 hover:to-indigo-700"
+                >
+                  <CreditCard className="h-4 w-4" />
+                  Gerenciar cartões
+                </button>
+              </div>
+
+              {financeSummaryLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map(item => (
+                    <div key={item} className="h-20 animate-pulse rounded-3xl bg-slate-100" />
+                  ))}
+                </div>
+              ) : creditCardSummary && creditCardSummary.totalCards > 0 ? (
+                <>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="rounded-3xl border border-indigo-100 bg-indigo-50/80 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.35em] text-indigo-500">Limite disponível</p>
+                      <p className="mt-2 text-2xl font-semibold text-slate-900">
+                        {formatCurrency(creditCardSummary.availableCredit)}
+                      </p>
+                      <p className="text-xs text-indigo-500">
+                        Total: {formatCurrency(creditCardSummary.totalLimit)}
+                      </p>
+                    </div>
+                    <div className="rounded-3xl border border-indigo-100 bg-white p-4">
+                      <p className="text-xs font-semibold uppercase tracking-[0.35em] text-indigo-500">Uso atual</p>
+                      <p className="mt-2 text-2xl font-semibold text-slate-900">
+                        {formatCurrency(creditCardSummary.usedLimit)}
+                      </p>
+                      <div className="mt-3 h-2 w-full rounded-full bg-slate-200">
+                        <div
+                          className="h-2 rounded-full bg-gradient-to-r from-violet-500 via-sky-500 to-indigo-600"
+                          style={{
+                            width: `${creditCardSummary.totalLimit > 0
+                              ? Math.min((creditCardSummary.usedLimit / creditCardSummary.totalLimit) * 100, 100)
+                              : 0}%`,
+                          }}
+                        />
+                      </div>
+                      <p className="mt-2 text-xs text-slate-500">
+                        {creditCardSummary.totalLimit > 0
+                          ? `${Math.round((creditCardSummary.usedLimit / creditCardSummary.totalLimit) * 100)}% do limite utilizado`
+                          : 'Cadastre seus limites para acompanhar o uso'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {nextDueDateLabel && (
+                    <div className="rounded-3xl border border-indigo-100 bg-indigo-50/70 p-4 text-sm text-indigo-700">
+                      Próxima fatura prevista para <span className="font-semibold">{nextDueDateLabel}</span>
+                    </div>
+                  )}
+
+                  <div className="space-y-4">
+                    {creditCardsPreview.map(card => {
+                      const utilizationRounded = Math.round(card.utilization);
+                      const utilizationBarWidth = Math.min(card.utilization, 100);
+
+                      return (
+                        <button
+                          key={card.id}
+                          type="button"
+                          onClick={() => handleOpenOverlay('credit-cards')}
+                          className="w-full rounded-3xl border border-slate-200 bg-slate-50/80 px-4 py-4 text-left transition hover:border-indigo-200 hover:bg-indigo-50"
+                        >
+                          <div className="flex items-center justify-between gap-4">
+                            <div>
+                              <p className="text-sm font-medium text-slate-700">{card.name}</p>
+                              <p className="text-xs text-slate-500">Fatura no dia {card.dueDay}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm font-semibold text-slate-900">{formatCurrency(card.balance)}</p>
+                              <p className="text-xs text-slate-500">de {formatCurrency(card.limit)}</p>
+                            </div>
+                          </div>
+                          <div className="mt-3 h-2 w-full rounded-full bg-slate-200">
+                            <div
+                              className={`h-2 rounded-full ${utilizationRounded > 90 ? 'bg-rose-500' : 'bg-gradient-to-r from-violet-500 to-indigo-600'}`}
+                              style={{ width: `${utilizationBarWidth}%` }}
+                            />
+                          </div>
+                          <p
+                            className={`mt-2 text-xs ${utilizationRounded > 100 ? 'text-rose-500' : 'text-slate-500'}`}
+                          >
+                            {utilizationRounded > 100
+                              ? 'Limite excedido'
+                              : `${utilizationRounded}% do limite utilizado`}
+                          </p>
+                        </button>
+                      );
+                    })}
+                    {creditCardSummary.totalCards > creditCardsPreview.length && (
+                      <p className="text-xs text-slate-500">
+                        +{creditCardSummary.totalCards - creditCardsPreview.length} cartões cadastrados
+                      </p>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-3xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
+                  Cadastre seus cartões para acompanhar limites, faturas e benefícios em um único lugar.
+                  <div className="mt-4 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenOverlay('credit-cards')}
+                      className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-lg transition hover:from-violet-600 hover:to-indigo-700"
+                    >
+                      <CreditCard className="h-4 w-4" />
+                      Adicionar cartão
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
         </div>
