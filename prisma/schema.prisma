@@ -1,0 +1,206 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum AccountType {
+  checking
+  savings
+  credit_card
+  loan
+  investment
+}
+
+enum TransactionType {
+  income
+  expense
+  transfer
+}
+
+enum GoalCategory {
+  savings
+  investment
+  expense_reduction
+  debt_payment
+  other
+}
+
+enum GoalStatus {
+  active
+  completed
+  paused
+}
+
+enum GoalPriority {
+  low
+  medium
+  high
+}
+
+model Account {
+  id                           Int               @id @default(autoincrement())
+  user_id                      String
+  pluggy_account_id            String?
+  pluggy_item_id               String?
+  name                         String
+  account_type                 AccountType
+  account_subtype              String?
+  institution_name             String?
+  balance                      Decimal           @default(0) @db.Decimal(18, 2)
+  currency_code                String            @default("BRL")
+  is_active                    Boolean           @default(true)
+  sync_enabled                 Boolean           @default(true)
+  last_sync_at                 DateTime?
+  created_at                   DateTime          @default(now())
+  updated_at                   DateTime          @updatedAt
+  marketing_name               String?
+  number                       String?
+  owner                        String?
+  tax_number                   String?
+  status                       String?
+  category                     String?
+  sub_category                 String?
+  pluggy_created_at            DateTime?
+  pluggy_updated_at            DateTime?
+  pluggy_last_updated_at       DateTime?
+  transfer_number              String?
+  closing_balance              Decimal?          @db.Decimal(18, 2)
+  automatically_invested_balance Decimal?        @db.Decimal(18, 2)
+  overdraft_contracted_limit   Decimal?          @db.Decimal(18, 2)
+  overdraft_used_limit         Decimal?          @db.Decimal(18, 2)
+  unarranged_overdraft_amount  Decimal?          @db.Decimal(18, 2)
+  branch_code                  String?
+  account_digit                String?
+  compe_code                   String?
+  credit_level                 String?
+  credit_brand                 String?
+  balance_close_date           DateTime?
+  balance_due_date             DateTime?
+  minimum_payment              Decimal?          @db.Decimal(18, 2)
+  credit_limit                 Decimal?          @db.Decimal(18, 2)
+  available_credit_limit       Decimal?          @db.Decimal(18, 2)
+  is_limit_flexible            Boolean?
+  total_installment_balance    Decimal?          @db.Decimal(18, 2)
+  interest_rate                Decimal?          @db.Decimal(10, 4)
+  fine_rate                    Decimal?          @db.Decimal(10, 4)
+  annual_fee                   Decimal?          @db.Decimal(18, 2)
+  card_network                 String?
+  card_type                    String?
+  contract_number              String?
+  principal_amount             Decimal?          @db.Decimal(18, 2)
+  outstanding_balance          Decimal?          @db.Decimal(18, 2)
+  loan_interest_rate           Decimal?          @db.Decimal(10, 4)
+  installment_amount           Decimal?          @db.Decimal(18, 2)
+  installment_frequency        String?
+  remaining_installments       Int?
+  total_installments           Int?
+  due_date                     DateTime?
+  maturity_date                DateTime?
+  origination_date             DateTime?
+  product_name                 String?
+  investment_type              String?
+  portfolio_value              Decimal?          @db.Decimal(18, 2)
+  net_worth                    Decimal?          @db.Decimal(18, 2)
+  gross_worth                  Decimal?          @db.Decimal(18, 2)
+  last_movement_date           DateTime?
+  investment_rate              Decimal?          @db.Decimal(10, 4)
+  rate_type                    String?
+  indexer                      String?
+  investment_maturity_date     DateTime?
+  isin                         String?
+  quantity                     Decimal?          @db.Decimal(18, 6)
+  unit_price                   Decimal?          @db.Decimal(18, 6)
+
+  transactions Transaction[]
+  budgets      Budget[]
+  goals        Goal[]
+
+  @@map("accounts")
+  @@index([user_id])
+}
+
+model Transaction {
+  id                       Int              @id @default(autoincrement())
+  user_id                  String
+  account_id               Int?
+  pluggy_transaction_id    String?
+  transaction_hash         String?
+  amount                   Decimal          @db.Decimal(18, 2)
+  description              String
+  category                 String
+  transaction_type         TransactionType  @default(expense)
+  date                     DateTime
+  balance_after            Decimal?         @db.Decimal(18, 2)
+  merchant_name            String?
+  merchant_category        String?
+  payment_method           String?
+  tags                     String?
+  notes                    String?
+  reconciled               Boolean          @default(false)
+  status                   String           @default("completed")
+  provider_code            String?
+  operation_type           String?
+  pix_data                 String?
+  installment_data         String?
+  location_data            String?
+  foreign_exchange_data    String?
+  fees_data                String?
+  processed_at             DateTime?
+  is_synced_from_bank      Boolean          @default(false)
+  created_at               DateTime         @default(now())
+  updated_at               DateTime         @updatedAt
+
+  account Account? @relation(fields: [account_id], references: [id], onDelete: SetNull)
+
+  @@map("transactions")
+  @@index([user_id])
+  @@index([account_id])
+  @@index([user_id, date])
+}
+
+model Budget {
+  id            Int       @id @default(autoincrement())
+  user_id       String
+  name          String
+  category      String
+  amount        Decimal   @db.Decimal(18, 2)
+  spent         Decimal   @default(0) @db.Decimal(18, 2)
+  period_start  DateTime
+  period_end    DateTime
+  status        String    @default("active")
+  notes         String?
+  account_id    Int?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+
+  account Account? @relation(fields: [account_id], references: [id], onDelete: SetNull)
+
+  @@map("budgets")
+  @@index([user_id])
+  @@index([user_id, category])
+}
+
+model Goal {
+  id             String        @id @default(cuid())
+  user_id        String
+  title          String
+  description    String?
+  target_amount  Decimal       @db.Decimal(18, 2)
+  current_amount Decimal       @default(0) @db.Decimal(18, 2)
+  target_date    DateTime
+  category       GoalCategory  @default(savings)
+  status         GoalStatus    @default(active)
+  priority       GoalPriority  @default(medium)
+  account_id     Int?
+  created_at     DateTime      @default(now())
+  updated_at     DateTime      @updatedAt
+
+  account Account? @relation(fields: [account_id], references: [id], onDelete: SetNull)
+
+  @@map("goals")
+  @@index([user_id])
+}
