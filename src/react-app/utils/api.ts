@@ -1,6 +1,21 @@
 const rawBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
-const normalizedBaseUrl = rawBaseUrl ? rawBaseUrl.replace(/\/+$/, '') : '';
-const isAbsoluteBaseUrl = normalizedBaseUrl.startsWith('http://') || normalizedBaseUrl.startsWith('https://');
+const sanitizedBaseUrl = rawBaseUrl ? rawBaseUrl.replace(/\/+$/, '') : '';
+
+const ensureScheme = (value: string) => {
+  if (!value) {
+    return '';
+  }
+
+  if (/^https?:\/\//i.test(value) || value.startsWith('//') || value.startsWith('/')) {
+    return value;
+  }
+
+  return `https://${value}`;
+};
+
+const normalizedBaseUrl = ensureScheme(sanitizedBaseUrl);
+const isAbsoluteBaseUrl = /^https?:\/\//i.test(normalizedBaseUrl) || normalizedBaseUrl.startsWith('//');
+const isRelativeBaseUrl = normalizedBaseUrl.startsWith('/');
 
 function buildUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) {
@@ -13,7 +28,11 @@ function buildUrl(path: string): string {
     return normalizedPath;
   }
 
-  return `${normalizedBaseUrl}${normalizedPath}`;
+  if (isAbsoluteBaseUrl || isRelativeBaseUrl) {
+    return `${normalizedBaseUrl}${normalizedPath}`;
+  }
+
+  return normalizedPath;
 }
 
 export function apiFetch(path: string, init?: RequestInit) {
