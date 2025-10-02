@@ -17,6 +17,15 @@ const normalizedBaseUrl = ensureScheme(sanitizedBaseUrl);
 const isAbsoluteBaseUrl = /^https?:\/\//i.test(normalizedBaseUrl) || normalizedBaseUrl.startsWith('//');
 const isRelativeBaseUrl = normalizedBaseUrl.startsWith('/');
 
+export class OfflineError extends Error {
+  readonly code = 'ERR_OFFLINE';
+
+  constructor(message = 'Sem conexão com a internet. Verifique sua rede e tente novamente.') {
+    super(message);
+    this.name = 'OfflineError';
+  }
+}
+
 function buildUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) {
     return path;
@@ -35,6 +44,10 @@ function buildUrl(path: string): string {
   return normalizedPath;
 }
 
+function isNavigatorOffline() {
+  return typeof navigator !== 'undefined' && navigator.onLine === false;
+}
+
 export function apiFetch(path: string, init?: RequestInit) {
   const url = buildUrl(path);
   const options: RequestInit = {
@@ -45,7 +58,17 @@ export function apiFetch(path: string, init?: RequestInit) {
     options.credentials = 'include';
   }
 
-  return fetch(url, options);
+  if (isNavigatorOffline()) {
+    return Promise.reject(new OfflineError());
+  }
+
+  return fetch(url, options).catch(error => {
+    if (isNavigatorOffline()) {
+      throw new OfflineError();
+    }
+
+    throw error;
+  });
 }
 
 export function getApiUrl(path: string): string {
