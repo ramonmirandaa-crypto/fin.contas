@@ -147,6 +147,24 @@ const errorResponse = (message: string, status = 400) => {
   return Response.json({ error: message }, { status });
 };
 
+const USER_CONFIG_UPSERT_SQL = `
+  INSERT INTO user_configs (user_id, config_key, config_value, created_at, updated_at)
+  VALUES (?, ?, ?, datetime('now'), datetime('now'))
+  ON CONFLICT(user_id, config_key) DO UPDATE SET
+    config_value = excluded.config_value,
+    updated_at = excluded.updated_at
+`;
+
+const getUserConfigValue = async (db: D1Database, userId: string, configKey: string) => {
+  const stmt = db.prepare("SELECT config_value FROM user_configs WHERE user_id = ? AND config_key = ?");
+  const result = await stmt.bind(userId, configKey).first() as any;
+  return (result?.config_value as string | null) ?? null;
+};
+
+const upsertUserConfigValue = (db: D1Database, userId: string, configKey: string, value: string) => {
+  return db.prepare(USER_CONFIG_UPSERT_SQL).bind(userId, configKey, value);
+};
+
 // Get authenticated user ID from request headers or auth middleware
 const getUserId = (c: any): string | null => {
   try {
@@ -1756,65 +1774,70 @@ app.get('/api/pluggy/connections', authMiddleware, async (c) => {
   }
 });
 
-app.all('/api/pluggy/config', authMiddleware, async (c) => {
-  const method = c.req.method.toUpperCase();
+app.options('/api/pluggy/config', () => new Response(null, { status: 204 }));
 
-  if (method === 'OPTIONS') {
-    return new Response(null, { status: 204 });
-  }
-
+app.get('/api/pluggy/config', authMiddleware, async (c) => {
   const userId = getUserId(c);
 
-  if (method === 'GET') {
-    try {
-      const stmt = c.env.DB.prepare("SELECT config_value FROM user_configs WHERE user_id = ? AND config_key = 'pluggy_client_id'");
-      const clientIdResult = await stmt.bind(userId).first() as any;
-
-      const stmt2 = c.env.DB.prepare("SELECT config_value FROM user_configs WHERE user_id = ? AND config_key = 'pluggy_client_secret'");
-      const clientSecretResult = await stmt2.bind(userId).first() as any;
-
-      return Response.json({
-        clientId: (clientIdResult?.config_value as string) || '',
-        clientSecret: (clientSecretResult?.config_value as string) || ''
-      });
-    } catch (error) {
-      console.error('Error loading pluggy config:', error);
-      return errorResponse('Failed to load config', 500);
-    }
+  if (!userId) {
+    return errorResponse('Unauthorized', 401);
   }
 
-  if (method === 'POST') {
-    try {
-      const { clientId, clientSecret } = await c.req.json();
+  try {
+    const [storedClientId, storedClientSecret] = await Promise.all([
+      getUserConfigValue(c.env.DB, userId, 'pluggy_client_id'),
+      getUserConfigValue(c.env.DB, userId, 'pluggy_client_secret')
+    ]);
 
-      if (!clientId?.trim() || !clientSecret?.trim()) {
-        return errorResponse('Client ID and Client Secret are required', 400);
-      }
+    const fallbackClientId = c.env.PLUGGY_CLIENT_ID || '';
+    const fallbackClientSecret = c.env.PLUGGY_CLIENT_SECRET || '';
 
-      await c.env.DB.prepare(`
-        INSERT INTO user_configs (user_id, config_key, config_value, created_at, updated_at)
-        VALUES (?, 'pluggy_client_id', ?, datetime('now'), datetime('now'))
-        ON CONFLICT(user_id, config_key) DO UPDATE SET
-          config_value = excluded.config_value,
-          updated_at = excluded.updated_at
-      `).bind(userId, clientId.trim()).run();
+    return Response.json({
+      clientId: storedClientId ?? fallbackClientId,
+      clientSecret: storedClientSecret ?? fallbackClientSecret
+    });
+  } catch (error) {
+    console.error('Error loading pluggy config:', error);
+    return errorResponse('Failed to load config', 500);
+  }
+});
 
-      await c.env.DB.prepare(`
-        INSERT INTO user_configs (user_id, config_key, config_value, created_at, updated_at)
-        VALUES (?, 'pluggy_client_secret', ?, datetime('now'), datetime('now'))
-        ON CONFLICT(user_id, config_key) DO UPDATE SET
-          config_value = excluded.config_value,
-          updated_at = excluded.updated_at
-      `).bind(userId, clientSecret.trim()).run();
+app.post('/api/pluggy/config', authMiddleware, async (c) => {
+  const userId = getUserId(c);
 
-      return Response.json({ success: true });
-    } catch (error) {
-      console.error('Error saving pluggy config:', error);
-      return errorResponse('Failed to save config', 500);
-    }
+  if (!userId) {
+    return errorResponse('Unauthorized', 401);
   }
 
-  return errorResponse('Method not allowed', 405);
+  let payload: { clientId?: unknown; clientSecret?: unknown };
+
+  try {
+    payload = await c.req.json();
+  } catch (error) {
+    console.error('Invalid JSON payload while saving pluggy config:', error);
+    return errorResponse('Invalid request body', 400);
+  }
+
+  const clientId = typeof payload.clientId === 'string' ? payload.clientId.trim() : '';
+  const clientSecret = typeof payload.clientSecret === 'string' ? payload.clientSecret.trim() : '';
+
+  if (!clientId || !clientSecret) {
+    return errorResponse('Client ID and Client Secret are required', 400);
+  }
+
+  try {
+    const statements = [
+      upsertUserConfigValue(c.env.DB, userId, 'pluggy_client_id', clientId),
+      upsertUserConfigValue(c.env.DB, userId, 'pluggy_client_secret', clientSecret)
+    ];
+
+    await c.env.DB.batch(statements);
+
+    return Response.json({ success: true, clientId, clientSecret });
+  } catch (error) {
+    console.error('Error saving pluggy config:', error);
+    return errorResponse('Failed to save config', 500);
+  }
 });
 
 app.post('/api/pluggy/test-connection', authMiddleware, async (c) => {
