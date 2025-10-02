@@ -23,6 +23,7 @@ import type { Account, CreateExpense, CreditCard as CreditCardType } from '@/sha
 import type { OverlayView } from '@/react-app/components/sections/FinancePreviewSection';
 import { formatCurrency, formatDate } from '@/react-app/utils';
 import { apiFetch } from '@/react-app/utils/api';
+import { useNetworkStatus } from '@/react-app/hooks/useNetworkStatus';
 
 interface OpenFinanceSummary {
   totalAccounts: number;
@@ -53,6 +54,7 @@ interface CreditCardSummary {
 
 export default function Home() {
   const { user, isLoaded, isSignedIn } = useUser();
+  const { isOnline } = useNetworkStatus();
   const [refreshInsights, setRefreshInsights] = useState(0);
   const [activeOverlay, setActiveOverlay] = useState<OverlayView | null>(null);
   const [financeSummaryRefreshKey, setFinanceSummaryRefreshKey] = useState(0);
@@ -81,11 +83,13 @@ export default function Home() {
     return userName.split(' ')[0];
   }, [userName]);
 
-  const { expenses, submitting, metrics, addExpense } = useExpenses({ enabled: Boolean(user && isSignedIn) });
+  const { expenses, submitting, metrics, addExpense } = useExpenses({
+    enabled: Boolean(user && isSignedIn && isOnline),
+  });
   const { totalExpenses, thisMonthExpenses, avgDailySpending } = metrics;
 
   useEffect(() => {
-    if (!isSignedIn) {
+    if (!isSignedIn || !isOnline) {
       setOpenFinanceSummary(null);
       setCreditCardSummary(null);
       setFinanceSummaryLoading(false);
@@ -214,7 +218,7 @@ export default function Home() {
     return () => {
       isCancelled = true;
     };
-  }, [isSignedIn, financeSummaryRefreshKey]);
+  }, [isSignedIn, isOnline, financeSummaryRefreshKey]);
 
   const handleRefreshInsights = useCallback(() => {
     setRefreshInsights(previous => previous + 1);
@@ -240,8 +244,12 @@ export default function Home() {
   }, []);
 
   const handleRefreshFinanceSummary = useCallback(() => {
+    if (!isOnline) {
+      return;
+    }
+
     setFinanceSummaryRefreshKey(previous => previous + 1);
-  }, []);
+  }, [isOnline]);
 
   const overlayConfig = useMemo(
     () =>
