@@ -128,7 +128,12 @@ app.use('*', async (c, next) => {
 
 // Enhanced CORS configuration
 app.use('*', cors({
-  origin: ['https://n5jcegoubmvau.mocha.app', 'http://localhost:5173', 'https://contas.ramonma.online'],
+  origin: [
+    'https://n5jcegoubmvau.mocha.app',
+    'http://localhost:5173',
+    'https://contas.ramonma.online',
+    'https://fincontas.ramonma.online',
+  ],
   allowHeaders: ['Content-Type', 'Authorization'],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
