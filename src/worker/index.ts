@@ -128,7 +128,12 @@ app.use('*', async (c, next) => {
 
 // Enhanced CORS configuration
 app.use('*', cors({
-  origin: ['https://n5jcegoubmvau.mocha.app', 'http://localhost:5173', 'https://contas.ramonma.online'],
+  origin: [
+    'https://n5jcegoubmvau.mocha.app',
+    'http://localhost:5173',
+    'https://contas.ramonma.online',
+    'https://fincontas.ramonma.online',
+  ],
   allowHeaders: ['Content-Type', 'Authorization'],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true,
@@ -1826,12 +1831,11 @@ app.post('/api/pluggy/config', authMiddleware, async (c) => {
   }
 
   try {
-    const statements = [
-      upsertUserConfigValue(c.env.DB, userId, 'pluggy_client_id', clientId),
-      upsertUserConfigValue(c.env.DB, userId, 'pluggy_client_secret', clientSecret)
-    ];
+    const clientIdStatement = upsertUserConfigValue(c.env.DB, userId, 'pluggy_client_id', clientId);
+    const clientSecretStatement = upsertUserConfigValue(c.env.DB, userId, 'pluggy_client_secret', clientSecret);
 
-    await c.env.DB.batch(statements);
+    await clientIdStatement.run();
+    await clientSecretStatement.run();
 
     return Response.json({ success: true, clientId, clientSecret });
   } catch (error) {

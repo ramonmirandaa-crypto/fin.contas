@@ -1,6 +1,11 @@
 const rawBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
 const sanitizedBaseUrl = rawBaseUrl ? rawBaseUrl.replace(/\/+$/, '') : '';
 
+const PRODUCTION_FALLBACKS: Record<string, string> = {
+  'contas.ramonma.online': 'https://n5jcegoubmvau.mocha.app',
+  'fincontas.ramonma.online': 'https://n5jcegoubmvau.mocha.app',
+};
+
 const ensureScheme = (value: string) => {
   if (!value) {
     return '';
@@ -13,7 +18,22 @@ const ensureScheme = (value: string) => {
   return `https://${value}`;
 };
 
-const normalizedBaseUrl = ensureScheme(sanitizedBaseUrl);
+const normalizedBaseUrl = (() => {
+  const explicit = ensureScheme(sanitizedBaseUrl);
+
+  if (explicit) {
+    return explicit;
+  }
+
+  if (typeof window !== 'undefined') {
+    const fallback = PRODUCTION_FALLBACKS[window.location.hostname.toLowerCase()];
+    if (fallback) {
+      return ensureScheme(fallback.replace(/\/+$/, ''));
+    }
+  }
+
+  return '';
+})();
 const isAbsoluteBaseUrl = /^https?:\/\//i.test(normalizedBaseUrl) || normalizedBaseUrl.startsWith('//');
 const isRelativeBaseUrl = normalizedBaseUrl.startsWith('/');
 
