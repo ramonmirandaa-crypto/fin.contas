@@ -1826,12 +1826,11 @@ app.post('/api/pluggy/config', authMiddleware, async (c) => {
   }
 
   try {
-    const statements = [
-      upsertUserConfigValue(c.env.DB, userId, 'pluggy_client_id', clientId),
-      upsertUserConfigValue(c.env.DB, userId, 'pluggy_client_secret', clientSecret)
-    ];
+    const clientIdStatement = upsertUserConfigValue(c.env.DB, userId, 'pluggy_client_id', clientId);
+    const clientSecretStatement = upsertUserConfigValue(c.env.DB, userId, 'pluggy_client_secret', clientSecret);
 
-    await c.env.DB.batch(statements);
+    await clientIdStatement.run();
+    await clientSecretStatement.run();
 
     return Response.json({ success: true, clientId, clientSecret });
   } catch (error) {
