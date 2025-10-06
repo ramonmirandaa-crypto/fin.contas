@@ -1,6 +1,6 @@
-## Financeito
+## FinContas
 
-Financeito é um gerenciador financeiro com autenticação gerenciada pelo [Clerk](https://clerk.com).
+FinContas é um gerenciador financeiro com autenticação gerenciada pelo [Clerk](https://clerk.com).
 
 Para suporte adicional ou para conversar com a comunidade, acesse nosso [Discord](https://discord.gg/shDEGBSe2d).
 
@@ -57,8 +57,8 @@ Para publicar no [Dockploy](https://app.dockploy.io):
    - **PLUGGY_CLIENT_ID** e **PLUGGY_CLIENT_SECRET** (execução/opcional): necessários para habilitar a integração com o Pluggy.
 2. Crie uma nova aplicação do tipo “Dockerfile” no Dockploy apontando para este repositório. A plataforma detectará o `Dockerfile` na raiz.
 3. Configure os comandos padrão caso queira executá-los manualmente:
-   - Comando de build: `docker build --build-arg VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY --build-arg VITE_API_BASE_URL=$VITE_API_BASE_URL -t financeito .`
-   - Comando de execução: `docker run -p 4173:4173 --env-file <arquivo-env> financeito` (no Dockploy a plataforma monta automaticamente a exposição da porta informada).
+   - Comando de build: `docker build --build-arg VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY --build-arg VITE_API_BASE_URL=$VITE_API_BASE_URL -t fincontas .`
+   - Comando de execução: `docker run -p 4173:4173 --env-file <arquivo-env> fincontas` (no Dockploy a plataforma monta automaticamente a exposição da porta informada).
 4. Defina a porta de exposição como `4173` (ou utilize a variável `PORT` que o Dockploy disponibiliza – o script `npm run preview` a reconhece automaticamente).
 
 > **Dica:** Em ambientes locais com `NODE_ENV=production`, execute `npm install --include=dev` antes de rodar `npm run build` para garantir que as dependências de desenvolvimento (como o próprio Vite) sejam instaladas.
