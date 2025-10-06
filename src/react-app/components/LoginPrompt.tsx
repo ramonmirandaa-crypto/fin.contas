@@ -1,5 +1,6 @@
 import { SignInButton } from '@clerk/clerk-react';
-import { Wallet, Shield, Brain } from 'lucide-react';
+import { Shield, Brain, Wallet } from 'lucide-react';
+import FinContasLogo from '@/react-app/components/brand/FinContasLogo';
 
 const GoogleIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -15,13 +16,12 @@ export default function LoginPrompt() {
     <div className="min-h-screen bg-gradient-to-br from-sky-50 via-indigo-50 to-blue-50 paper-texture flex items-center justify-center px-4">
       <div className="max-w-md w-full">
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-white/60 p-8 text-center">
-          <div className="bg-gradient-to-br from-sky-500 to-blue-600 p-4 rounded-2xl shadow-lg mx-auto w-fit mb-6">
-            <Wallet className="w-12 h-12 text-white" />
-          </div>
-
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-sky-600 to-blue-600 bg-clip-text text-transparent mb-2">
-            Financeito
-          </h1>
+          <FinContasLogo
+            className="mx-auto mb-6"
+            orientation="vertical"
+            wordmarkClassName="text-3xl"
+          />
+          <h1 className="sr-only">FinContas</h1>
           <p className="text-gray-600 mb-8">
             Seu gerenciador completo de finanças pessoais com IA
           </p>

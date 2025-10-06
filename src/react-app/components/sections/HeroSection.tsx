@@ -1,7 +1,8 @@
-import { RefreshCw, Sparkles, Wallet } from 'lucide-react';
+import { RefreshCw, Sparkles } from 'lucide-react';
 import AuthButton from '@/react-app/components/AuthButton';
 import type { OverlayView } from './FinancePreviewSection';
 import { formatCurrency } from '@/react-app/utils';
+import FinContasLogo from '@/react-app/components/brand/FinContasLogo';
 
 interface HeroSectionProps {
   userName?: string | null;
@@ -27,14 +28,17 @@ export default function HeroSection({
       </div>
 
       <nav className="relative mb-16 flex items-center justify-between gap-6 rounded-full border border-emerald-100/70 bg-white/80 px-6 py-4 shadow-xl backdrop-blur">
-        <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 text-white shadow-md">
-            <Wallet className="h-6 w-6" />
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.4em] text-emerald-600">Financeito</p>
-            <p className="text-sm text-slate-600">Fluxo financeiro com IA generativa</p>
-          </div>
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4">
+          <FinContasLogo
+            className="flex-none"
+            wordmarkClassName="text-lg"
+          />
+          <p className="text-xs font-medium uppercase tracking-[0.3em] text-emerald-600 sm:hidden" aria-hidden="true">
+            Fluxo financeiro com IA generativa
+          </p>
+          <p className="hidden text-sm text-slate-600 sm:block">
+            Fluxo financeiro com IA generativa
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <button

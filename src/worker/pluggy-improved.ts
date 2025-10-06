@@ -591,7 +591,7 @@ export class PluggyClient {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'User-Agent': 'FinanceitoApp/1.0'
+          'User-Agent': 'FinContasApp/1.0'
         },
         body: JSON.stringify(authPayload)
       });
@@ -676,7 +676,7 @@ export class PluggyClient {
           'X-API-KEY': apiKey,
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'User-Agent': 'FinanceitoApp/1.0'
+          'User-Agent': 'FinContasApp/1.0'
         },
         body: JSON.stringify(options || {})
       });
@@ -806,7 +806,7 @@ export class PluggyClient {
           'X-API-KEY': token,
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'User-Agent': 'FinanceitoApp/1.0',
+          'User-Agent': 'FinContasApp/1.0',
           ...options.headers
         }
       });

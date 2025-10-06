@@ -2210,7 +2210,7 @@ app.post('/api/pluggy/test-webhook', authMiddleware, async (c) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'User-Agent': 'FinanceitoApp-Webhook/1.0'
+        'User-Agent': 'FinContasApp-Webhook/1.0'
       },
       body: JSON.stringify(testPayload)
     });

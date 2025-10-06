@@ -41,7 +41,7 @@ export default function OfflineShell() {
         <div className="space-y-3">
           <h1 className="text-3xl font-semibold tracking-tight">Sem conexão com a internet</h1>
           <p className="text-slate-400 text-sm sm:text-base">
-            Não foi possível acessar os serviços da Financeito. Verifique sua rede ou aguarde alguns instantes antes de tentar novamente.
+            Não foi possível acessar os serviços da FinContas. Verifique sua rede ou aguarde alguns instantes antes de tentar novamente.
           </p>
         </div>
         {lastCheckedLabel && (
