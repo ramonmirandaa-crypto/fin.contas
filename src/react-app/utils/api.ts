@@ -18,24 +18,26 @@ const ensureScheme = (value: string) => {
   return `https://${value}`;
 };
 
-const normalizedBaseUrl = (() => {
-  const explicit = ensureScheme(sanitizedBaseUrl);
-
-  if (explicit) {
-    return explicit;
+const getFallbackBaseUrl = () => {
+  if (typeof window === 'undefined') {
+    return '';
   }
 
-  if (typeof window !== 'undefined') {
-    const fallback = PRODUCTION_FALLBACKS[window.location.hostname.toLowerCase()];
-    if (fallback) {
-      return ensureScheme(fallback.replace(/\/+$/, ''));
-    }
+  const fallback = PRODUCTION_FALLBACKS[window.location.hostname.toLowerCase()];
+  if (!fallback) {
+    return '';
   }
 
-  return '';
-})();
-const isAbsoluteBaseUrl = /^https?:\/\//i.test(normalizedBaseUrl) || normalizedBaseUrl.startsWith('//');
-const isRelativeBaseUrl = normalizedBaseUrl.startsWith('/');
+  return ensureScheme(fallback.replace(/\/+$/, ''));
+};
+
+const explicitBaseUrl = ensureScheme(sanitizedBaseUrl);
+const fallbackBaseUrl = getFallbackBaseUrl();
+
+const normalizedBaseUrl = explicitBaseUrl || fallbackBaseUrl || '';
+const secondaryBaseUrl = explicitBaseUrl && fallbackBaseUrl && explicitBaseUrl !== fallbackBaseUrl
+  ? fallbackBaseUrl
+  : '';
 
 export class OfflineError extends Error {
   readonly code = 'ERR_OFFLINE';
@@ -46,19 +48,22 @@ export class OfflineError extends Error {
   }
 }
 
-function buildUrl(path: string): string {
+function buildUrl(path: string, baseUrl: string): string {
   if (/^https?:\/\//i.test(path)) {
     return path;
   }
 
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
 
-  if (!normalizedBaseUrl) {
+  if (!baseUrl) {
     return normalizedPath;
   }
 
-  if (isAbsoluteBaseUrl || isRelativeBaseUrl) {
-    return `${normalizedBaseUrl}${normalizedPath}`;
+  const isAbsolute = /^https?:\/\//i.test(baseUrl) || baseUrl.startsWith('//');
+  const isRelative = baseUrl.startsWith('/');
+
+  if (isAbsolute || isRelative) {
+    return `${baseUrl}${normalizedPath}`;
   }
 
   return normalizedPath;
@@ -68,29 +73,104 @@ function isNavigatorOffline() {
   return typeof navigator !== 'undefined' && navigator.onLine === false;
 }
 
-export function apiFetch(path: string, init?: RequestInit) {
-  const url = buildUrl(path);
+function prepareOptions(baseUrl: string, init?: RequestInit): RequestInit {
   const options: RequestInit = {
     ...init,
   };
 
-  if (isAbsoluteBaseUrl && !init?.credentials) {
+  const isAbsolute = /^https?:\/\//i.test(baseUrl) || baseUrl.startsWith('//');
+
+  if (isAbsolute && !init?.credentials) {
     options.credentials = 'include';
   }
 
-  if (isNavigatorOffline()) {
-    return Promise.reject(new OfflineError());
+  return options;
+}
+
+function resolveAttemptedUrl(attemptedUrl: string): string {
+  if (typeof window === 'undefined') {
+    return attemptedUrl;
   }
 
-  return fetch(url, options).catch(error => {
+  if (/^https?:\/\//i.test(attemptedUrl)) {
+    return attemptedUrl;
+  }
+
+  if (attemptedUrl.startsWith('//')) {
+    return `${window.location.protocol}${attemptedUrl}`;
+  }
+
+  const normalizedPath = attemptedUrl.startsWith('/') ? attemptedUrl : `/${attemptedUrl}`;
+  return `${window.location.origin}${normalizedPath}`;
+}
+
+function shouldRetryWithFallback(response: Response, attemptedUrl: string, method: string): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  if (!secondaryBaseUrl) {
+    return false;
+  }
+
+  const resolvedUrl = resolveAttemptedUrl(attemptedUrl);
+
+  if (!resolvedUrl.startsWith(window.location.origin)) {
+    return false;
+  }
+
+  const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+
+  if (!contentType.includes('text/html')) {
+    return false;
+  }
+
+  if (response.status === 404 || response.status === 405) {
+    return true;
+  }
+
+  if (resolvedUrl.includes('/api/')) {
+    return true;
+  }
+
+  return method !== 'GET';
+}
+
+async function executeFetch(url: string, baseUrl: string, init?: RequestInit) {
+  if (isNavigatorOffline()) {
+    throw new OfflineError();
+  }
+
+  const options = prepareOptions(baseUrl, init);
+
+  try {
+    return await fetch(url, options);
+  } catch (error) {
     if (isNavigatorOffline()) {
       throw new OfflineError();
     }
 
     throw error;
-  });
+  }
+}
+
+export async function apiFetch(path: string, init?: RequestInit) {
+  const method = init?.method?.toUpperCase?.() ?? 'GET';
+  const primaryUrl = buildUrl(path, normalizedBaseUrl);
+  const primaryResponse = await executeFetch(primaryUrl, normalizedBaseUrl, init);
+
+  if (shouldRetryWithFallback(primaryResponse, primaryUrl, method)) {
+    if (typeof primaryResponse.body?.cancel === 'function') {
+      primaryResponse.body.cancel().catch(() => {});
+    }
+
+    const fallbackUrl = buildUrl(path, secondaryBaseUrl);
+    return executeFetch(fallbackUrl, secondaryBaseUrl, init);
+  }
+
+  return primaryResponse;
 }
 
 export function getApiUrl(path: string): string {
-  return buildUrl(path);
+  return buildUrl(path, normalizedBaseUrl);
 }
