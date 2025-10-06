@@ -19,5 +19,6 @@ COPY --from=deps /app/node_modules ./node_modules
 RUN npm prune --omit=dev
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/scripts ./scripts
+COPY --from=build /app/prisma ./prisma
 EXPOSE 4173
-CMD ["node", "scripts/preview.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node scripts/preview.js"]
