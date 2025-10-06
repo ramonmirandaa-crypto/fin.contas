@@ -40,6 +40,8 @@ This project uses Prisma with a SQLite datasource stored under `prisma/dev.db`. 
    PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1 npx prisma generate
    ```
 
+> **Produção:** ao apontar `DATABASE_URL` para outro provedor (ex.: PostgreSQL no Dockploy), utilize `npx prisma migrate deploy` para aplicar o esquema no banco remoto.
+
 ### Deploy no Dockploy
 
 O repositório já contém um `Dockerfile` preparado para gerar uma imagem de produção a partir do projeto Vite + Worker. Esse `Dockerfile`
@@ -60,5 +62,7 @@ Para publicar no [Dockploy](https://app.dockploy.io):
    - Comando de build: `docker build --build-arg VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY --build-arg VITE_API_BASE_URL=$VITE_API_BASE_URL -t fincontas .`
    - Comando de execução: `docker run -p 4173:4173 --env-file <arquivo-env> fincontas` (no Dockploy a plataforma monta automaticamente a exposição da porta informada).
 4. Defina a porta de exposição como `4173` (ou utilize a variável `PORT` que o Dockploy disponibiliza – o script `npm run preview` a reconhece automaticamente).
+
+Durante a inicialização do contêiner, o comando `npx prisma migrate deploy` é executado antes do servidor iniciar. Isso garante que o banco apontado por `DATABASE_URL` seja criado/atualizado conforme o esquema. Em provedores gerenciados (p. ex. PostgreSQL), basta criar a instância e expor a URL de conexão; o Prisma cuidará da criação das tabelas.
 
 > **Dica:** Em ambientes locais com `NODE_ENV=production`, execute `npm install --include=dev` antes de rodar `npm run build` para garantir que as dependências de desenvolvimento (como o próprio Vite) sejam instaladas.
