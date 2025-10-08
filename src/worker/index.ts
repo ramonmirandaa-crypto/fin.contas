@@ -152,12 +152,15 @@ const errorResponse = (message: string, status = 400) => {
   return Response.json({ error: message }, { status });
 };
 
-const USER_CONFIG_UPSERT_SQL = `
+const USER_CONFIG_INSERT_SQL = `
   INSERT INTO user_configs (user_id, config_key, config_value, created_at, updated_at)
   VALUES (?, ?, ?, datetime('now'), datetime('now'))
-  ON CONFLICT(user_id, config_key) DO UPDATE SET
-    config_value = excluded.config_value,
-    updated_at = excluded.updated_at
+`;
+
+const USER_CONFIG_UPDATE_SQL = `
+  UPDATE user_configs
+  SET config_value = ?, updated_at = datetime('now')
+  WHERE user_id = ? AND config_key = ?
 `;
 
 const getUserConfigValue = async (db: D1Database, userId: string, configKey: string) => {
@@ -166,8 +169,28 @@ const getUserConfigValue = async (db: D1Database, userId: string, configKey: str
   return (result?.config_value as string | null) ?? null;
 };
 
-const upsertUserConfigValue = (db: D1Database, userId: string, configKey: string, value: string) => {
-  return db.prepare(USER_CONFIG_UPSERT_SQL).bind(userId, configKey, value);
+const upsertUserConfigValue = async (
+  db: D1Database,
+  userId: string,
+  configKey: string,
+  value: string
+) => {
+  try {
+    const updateResult = await db.prepare(USER_CONFIG_UPDATE_SQL)
+      .bind(value, userId, configKey)
+      .run();
+
+    const changes = (updateResult as any)?.meta?.changes ?? 0;
+    if (changes && changes > 0) {
+      return;
+    }
+  } catch (error) {
+    console.warn('Failed to update user config, attempting insert instead:', error);
+  }
+
+  await db.prepare(USER_CONFIG_INSERT_SQL)
+    .bind(userId, configKey, value)
+    .run();
 };
 
 // Get authenticated user ID from request headers or auth middleware
@@ -1831,11 +1854,10 @@ app.post('/api/pluggy/config', authMiddleware, async (c) => {
   }
 
   try {
-    const clientIdStatement = upsertUserConfigValue(c.env.DB, userId, 'pluggy_client_id', clientId);
-    const clientSecretStatement = upsertUserConfigValue(c.env.DB, userId, 'pluggy_client_secret', clientSecret);
-
-    await clientIdStatement.run();
-    await clientSecretStatement.run();
+    await Promise.all([
+      upsertUserConfigValue(c.env.DB, userId, 'pluggy_client_id', clientId),
+      upsertUserConfigValue(c.env.DB, userId, 'pluggy_client_secret', clientSecret)
+    ]);
 
     return Response.json({ success: true, clientId, clientSecret });
   } catch (error) {
