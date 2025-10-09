@@ -17,16 +17,8 @@ export const CreateExpenseSchema = z.object({
   date: z.string(),
 });
 
-export const AIInsightSchema = z.object({
-  summary: z.string(),
-  tips: z.array(z.string()),
-  categoryBreakdown: z.record(z.string(), z.number()),
-  spendingTrend: z.enum(['increasing', 'decreasing', 'stable']),
-});
-
 export type Expense = z.infer<typeof ExpenseSchema>;
 export type CreateExpense = z.infer<typeof CreateExpenseSchema>;
-export type AIInsight = z.infer<typeof AIInsightSchema>;
 
 // Credit Card schemas
 export const CreditCardSchema = z.object({
@@ -272,25 +264,6 @@ export const CreateTransactionCategorySchema = z.object({
   })).optional(),
 });
 
-// Transaction enrichment schemas
-export const TransactionEnrichmentSchema = z.object({
-  suggestedCategory: z.string(),
-  tags: z.array(z.string()),
-  notes: z.string().nullable(),
-  isRecurring: z.boolean(),
-  riskLevel: z.enum(['low', 'medium', 'high']),
-  merchantInfo: z.object({
-    name: z.string().nullable(),
-    category: z.string().nullable(),
-    mcc: z.string().nullable(),
-  }).nullable(),
-  paymentInfo: z.object({
-    method: z.string().nullable(),
-    pixKey: z.string().nullable(),
-    endToEndId: z.string().nullable(),
-  }).nullable(),
-});
-
 // Bulk operation schemas
 export const BulkTransactionOperationSchema = z.object({
   operation: z.enum(['categorize', 'tag', 'reconcile', 'delete']),
@@ -309,7 +282,6 @@ export type Transaction = z.infer<typeof TransactionSchema>;
 export type CreateTransaction = z.infer<typeof CreateTransactionSchema>;
 export type TransactionCategory = z.infer<typeof TransactionCategorySchema>;
 export type CreateTransactionCategory = z.infer<typeof CreateTransactionCategorySchema>;
-export type TransactionEnrichment = z.infer<typeof TransactionEnrichmentSchema>;
 export type BulkTransactionOperation = z.infer<typeof BulkTransactionOperationSchema>;
 
 // Budget schemas

@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
-import { CreditCard, DollarSign, AlertCircle, CheckCircle, Clock, FileText, Eye, EyeOff, RefreshCw, Info } from 'lucide-react';
+import { CreditCard, DollarSign, AlertCircle, CheckCircle, Clock, FileText, Eye, EyeOff } from 'lucide-react';
 import { apiFetch } from '@/react-app/utils/api';
 import { CreditCardBill, CreditCardTransaction } from '@/shared/types';
-import PluggyPermissionsInfo from './PluggyPermissionsInfo';
 
 const BILL_STATUS_COLORS = {
   open: 'bg-blue-100 text-blue-800',
@@ -42,9 +41,7 @@ export default function CreditCardBillManager() {
   const [billTransactions, setBillTransactions] = useState<CreditCardTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [showAmounts, setShowAmounts] = useState(false);
-  const [showPermissionsInfo, setShowPermissionsInfo] = useState(false);
 
   const fetchBills = async () => {
     try {
@@ -70,41 +67,6 @@ export default function CreditCardBillManager() {
       setBillTransactions([]);
     } finally {
       setLoadingTransactions(false);
-    }
-  };
-
-  const syncFromPluggy = async () => {
-    try {
-      setSyncing(true);
-      const response = await apiFetch('/api/credit-card-bills/sync-pluggy', {
-        method: 'POST',
-      });
-      
-      if (response.ok) {
-        await fetchBills();
-        const data = await response.json();
-        
-        // Show detailed message based on results
-        let message = data.message || 'Sincronização concluída com sucesso!';
-        
-        if (data.permissionErrors > 0) {
-          message += '\n\nℹ️ Algumas contas de cartão de crédito não puderam ser acessadas devido a restrições de permissão da API do Pluggy. Isso é normal e pode requerer upgrade do plano ou autorização adicional.';
-        }
-        
-        if (data.errors && data.errors.length > 0) {
-          message += '\n\n⚠️ Alguns erros ocorreram:\n' + data.errors.join('\n');
-        }
-        
-        alert(message);
-      } else {
-        const error = await response.json();
-        alert(error.error || 'Erro na sincronização');
-      }
-    } catch (error) {
-      console.error('Erro ao sincronizar:', error);
-      alert('Erro ao sincronizar com Pluggy');
-    } finally {
-      setSyncing(false);
     }
   };
 
@@ -258,13 +220,6 @@ export default function CreditCardBillManager() {
           
           <div className="flex gap-3">
             <button
-              onClick={() => setShowPermissionsInfo(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-amber-100 text-amber-700 rounded-xl hover:bg-amber-200 transition-colors"
-            >
-              <Info className="w-5 h-5" />
-              Sobre Permissões
-            </button>
-            <button
               onClick={() => setShowAmounts(!showAmounts)}
               className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors"
             >
@@ -272,12 +227,10 @@ export default function CreditCardBillManager() {
               {showAmounts ? 'Ocultar' : 'Mostrar'} Valores
             </button>
             <button
-              onClick={syncFromPluggy}
-              disabled={syncing}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-100 text-emerald-700 rounded-xl hover:bg-emerald-200 transition-colors disabled:opacity-50"
+              onClick={() => { void fetchBills(); }}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-100 text-emerald-700 rounded-xl hover:bg-emerald-200 transition-colors"
             >
-              <RefreshCw className={`w-5 h-5 ${syncing ? 'animate-spin' : ''}`} />
-              Sincronizar Pluggy
+              Recarregar faturas
             </button>
           </div>
         </div>
@@ -291,7 +244,7 @@ export default function CreditCardBillManager() {
                 <div className="text-center py-8">
                   <CreditCard className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                   <p className="text-gray-600">Nenhuma fatura encontrada</p>
-                  <p className="text-sm text-gray-500">Sincronize com o Pluggy para importar suas faturas</p>
+                  <p className="text-sm text-gray-500">Atualize as integrações bancárias para trazer suas faturas mais recentes.</p>
                 </div>
               ) : (
                 bills.map((bill) => {
@@ -481,11 +434,6 @@ export default function CreditCardBillManager() {
         </div>
       </div>
 
-      {/* Permissions Info Modal */}
-      <PluggyPermissionsInfo 
-        show={showPermissionsInfo} 
-        onClose={() => setShowPermissionsInfo(false)} 
-      />
     </div>
   );
 }

@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { Plus, Sparkles } from 'lucide-react';
-import { apiFetch } from '@/react-app/utils/api';
+import { Plus } from 'lucide-react';
 import { EXPENSE_CATEGORIES, CreateExpense } from '@/shared/types';
 
 interface ExpenseFormProps {
@@ -15,7 +14,6 @@ export default function ExpenseForm({ onSubmit, loading }: ExpenseFormProps) {
     category: 'Alimentação',
     date: new Date().toISOString().split('T')[0],
   });
-  const [categorizing, setCategorizing] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,27 +24,6 @@ export default function ExpenseForm({ onSubmit, loading }: ExpenseFormProps) {
       category: 'Alimentação',
       date: new Date().toISOString().split('T')[0],
     });
-  };
-
-  const autoCategory = async () => {
-    if (!expense.description.trim()) return;
-    
-    setCategorizing(true);
-    try {
-      const response = await apiFetch('/api/categorize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description: expense.description }),
-      });
-      const data = await response.json();
-      if (data.category) {
-        setExpense(prev => ({ ...prev, category: data.category }));
-      }
-    } catch (error) {
-      console.error('Auto-categorization failed:', error);
-    } finally {
-      setCategorizing(false);
-    }
   };
 
   return (
@@ -98,25 +75,14 @@ export default function ExpenseForm({ onSubmit, loading }: ExpenseFormProps) {
           <label className="block text-sm font-semibold text-gray-700 mb-2">
             Descrição
           </label>
-          <div className="relative">
             <input
               type="text"
               value={expense.description}
               onChange={(e) => setExpense(prev => ({ ...prev, description: e.target.value }))}
-              className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
               placeholder="No que você gastou?"
               required
             />
-            <button
-              type="button"
-              onClick={autoCategory}
-              disabled={categorizing || !expense.description.trim()}
-              className="absolute right-2 top-1/2 transform -translate-y-1/2 p-2 text-emerald-600 hover:text-emerald-700 disabled:text-gray-400 transition-colors"
-              title="Categorizar automaticamente com IA"
-            >
-              <Sparkles className={`w-5 h-5 ${categorizing ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
         </div>
 
         <div>

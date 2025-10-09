@@ -12,11 +12,8 @@ import {
   Bell,
   Bolt,
   ShieldCheck,
-  Brain,
-  Sparkles,
 } from 'lucide-react';
 import ExpenseTracker from '@/react-app/components/blocks/ExpenseTracker';
-import AIInsights from '@/react-app/components/AIInsights';
 import ExpenseGraphs from '@/react-app/components/ExpenseGraphs';
 import CreditCardManager from '@/react-app/components/CreditCardManager';
 import InvestmentManager from '@/react-app/components/InvestmentManager';
@@ -41,15 +38,9 @@ export interface HighlightItem {
 export const HIGHLIGHT_ITEMS: HighlightItem[] = [
   {
     icon: TrendingUp,
-    title: 'Insights preditivos',
-    description: 'Antecipe movimentos de fluxo de caixa com análises guiadas por IA.',
+    title: 'Painéis estratégicos',
+    description: 'Visualize tendências e indicadores financeiros em tempo real.',
     accent: 'linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(20, 184, 166, 0.15))',
-  },
-  {
-    icon: Brain,
-    title: 'IA que entende você',
-    description: 'Sugestões contextuais baseadas em hábitos e metas do seu perfil.',
-    accent: 'linear-gradient(135deg, rgba(34, 211, 238, 0.25), rgba(56, 189, 248, 0.1))',
   },
   {
     icon: ShieldCheck,
@@ -62,6 +53,12 @@ export const HIGHLIGHT_ITEMS: HighlightItem[] = [
     title: 'Automação em minutos',
     description: 'Ações rápidas para organizar despesas, contas e notificações.',
     accent: 'linear-gradient(135deg, rgba(251, 191, 36, 0.25), rgba(249, 115, 22, 0.1))',
+  },
+  {
+    icon: Wallet,
+    title: 'Controle do dia a dia',
+    description: 'Lance despesas, acompanhe limites e mantenha saldos atualizados.',
+    accent: 'linear-gradient(135deg, rgba(34, 211, 238, 0.25), rgba(56, 189, 248, 0.1))',
   },
 ];
 
@@ -78,14 +75,12 @@ interface BuildOverlayConfigOptions {
   expenses: Expense[];
   onAddExpense: (expense: CreateExpense) => void;
   submitting: boolean;
-  refreshInsights: number;
 }
 
 export function buildOverlayConfig({
   expenses,
   onAddExpense,
   submitting,
-  refreshInsights,
 }: BuildOverlayConfigOptions): OverlayConfig {
   return {
     dashboard: {
@@ -147,12 +142,6 @@ export function buildOverlayConfig({
       description: 'Centralize parcelas, juros e prazos para planejar seus pagamentos.',
       icon: Banknote,
       render: () => <LoanManager />,
-    },
-    insights: {
-      title: 'Insights de IA',
-      description: 'Receba análises e recomendações inteligentes baseadas nos seus dados.',
-      icon: Sparkles,
-      render: () => <AIInsights refreshKey={refreshInsights} />,
     },
     analytics: {
       title: 'Análises e gráficos',
