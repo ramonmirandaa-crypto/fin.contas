@@ -23,7 +23,7 @@ export default function LoginPrompt() {
           />
           <h1 className="sr-only">FinContas</h1>
           <p className="text-gray-600 mb-8">
-            Seu gerenciador completo de finanças pessoais com IA
+            Seu gerenciador completo de finanças pessoais conectado e simplificado.
           </p>
 
           <div className="space-y-4 mb-8">
@@ -38,16 +38,16 @@ export default function LoginPrompt() {
             <div className="flex items-center gap-3 p-4 bg-sky-50 rounded-xl">
               <Brain className="w-6 h-6 text-sky-600" />
               <div className="text-left">
-                <h3 className="font-semibold text-gray-900">Insights com IA</h3>
-                <p className="text-sm text-gray-600">Receba dicas personalizadas de gastos</p>
+                <h3 className="font-semibold text-gray-900">Relatórios completos</h3>
+                <p className="text-sm text-gray-600">Visualize gráficos e acompanhe tendências de gastos</p>
               </div>
             </div>
 
             <div className="flex items-center gap-3 p-4 bg-sky-50 rounded-xl">
               <Wallet className="w-6 h-6 text-sky-600" />
               <div className="text-left">
-                <h3 className="font-semibold text-gray-900">Rastreamento Inteligente</h3>
-                <p className="text-sm text-gray-600">Categorização automática de gastos</p>
+                <h3 className="font-semibold text-gray-900">Registro inteligente</h3>
+                <p className="text-sm text-gray-600">Lance despesas rapidamente e organize por categorias</p>
               </div>
             </div>
           </div>
@@ -60,7 +60,7 @@ export default function LoginPrompt() {
           </SignInButton>
 
           <p className="text-xs text-gray-500 mt-4">
-            Entre para começar a rastrear seus gastos e obter insights da IA
+            Entre para começar a rastrear seus gastos e acessar dashboards detalhados.
           </p>
         </div>
       </div>

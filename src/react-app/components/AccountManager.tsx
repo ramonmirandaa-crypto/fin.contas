@@ -8,7 +8,6 @@ import {
   Banknote,
   Edit,
   Trash2,
-  RefreshCw,
   Eye,
   EyeOff,
   Check,
@@ -50,7 +49,6 @@ export default function AccountManager() {
   const [submitting, setSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
-  const [syncingAccounts, setSyncingAccounts] = useState<Set<number>>(new Set());
   const [showBalances, setShowBalances] = useState(false);
   const [formData, setFormData] = useState<CreateAccount>({
     name: '',
@@ -142,23 +140,6 @@ export default function AccountManager() {
       }
     } catch (error) {
       console.error('Erro ao excluir conta:', error);
-    }
-  };
-
-  const syncPluggyAccounts = async () => {
-    try {
-      setSyncingAccounts(new Set([...Array(accounts.length).keys()]));
-      const response = await apiFetch('/api/accounts/sync-pluggy', {
-        method: 'POST',
-      });
-      
-      if (response.ok) {
-        await fetchAccounts();
-      }
-    } catch (error) {
-      console.error('Erro ao sincronizar contas:', error);
-    } finally {
-      setSyncingAccounts(new Set());
     }
   };
 
@@ -267,12 +248,10 @@ export default function AccountManager() {
               {showBalances ? 'Ocultar' : 'Mostrar'} Saldos
             </button>
             <button
-              onClick={syncPluggyAccounts}
-              disabled={syncingAccounts.size > 0}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-100 text-emerald-700 rounded-xl hover:bg-emerald-200 transition-colors disabled:opacity-50"
+              onClick={() => { void fetchAccounts(); }}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-100 text-emerald-700 rounded-xl hover:bg-emerald-200 transition-colors"
             >
-              <RefreshCw className={`w-5 h-5 ${syncingAccounts.size > 0 ? 'animate-spin' : ''}`} />
-              Sincronizar Pluggy
+              Recarregar lista
             </button>
             <button
               onClick={() => setShowForm(true)}

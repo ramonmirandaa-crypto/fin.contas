@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useUser } from '@clerk/clerk-react';
 import {
   Bell,
-  Brain,
   Briefcase,
   CalendarClock,
   CreditCard,
@@ -55,7 +54,6 @@ interface CreditCardSummary {
 export default function Home() {
   const { user, isLoaded, isSignedIn } = useUser();
   const { isOnline } = useNetworkStatus();
-  const [refreshInsights, setRefreshInsights] = useState(0);
   const [activeOverlay, setActiveOverlay] = useState<OverlayView | null>(null);
   const [financeSummaryRefreshKey, setFinanceSummaryRefreshKey] = useState(0);
   const [financeSummaryLoading, setFinanceSummaryLoading] = useState(true);
@@ -220,17 +218,9 @@ export default function Home() {
     };
   }, [isSignedIn, isOnline, financeSummaryRefreshKey]);
 
-  const handleRefreshInsights = useCallback(() => {
-    setRefreshInsights(previous => previous + 1);
-  }, []);
-
   const handleAddExpense = useCallback(
     (expenseData: CreateExpense) => {
-      void addExpense(expenseData).then(newExpense => {
-        if (newExpense) {
-          setRefreshInsights(previous => previous + 1);
-        }
-      });
+      void addExpense(expenseData);
     },
     [addExpense]
   );
@@ -257,9 +247,8 @@ export default function Home() {
         expenses,
         onAddExpense: handleAddExpense,
         submitting,
-        refreshInsights,
       }),
-    [expenses, handleAddExpense, submitting, refreshInsights]
+    [expenses, handleAddExpense, submitting]
   );
 
   const activeOverlayConfig = activeOverlay ? overlayConfig[activeOverlay] : null;
@@ -330,10 +319,10 @@ export default function Home() {
       helper: 'Veja relatórios completos',
     },
     {
-      id: 'insights' as const,
-      label: 'Insight diário da IA',
+      id: 'dashboard' as const,
+      label: 'Média diária',
       value: formatCurrency(dailyAverage),
-      helper: 'Gasto médio diário sugerido',
+      helper: 'Acompanhe metas no painel completo',
     },
   ];
 
@@ -421,17 +410,16 @@ export default function Home() {
         </nav>
 
         <div className="mt-8 rounded-3xl border border-slate-200 bg-slate-50/80 p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">Assistente IA</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">Sincronização</p>
           <p className="mt-3 text-sm text-slate-600">
-            Receba recomendações em tempo real ao registrar novos gastos.
+            Atualize saldos conectados e mantenha contas e cartões sempre alinhados.
           </p>
           <button
             type="button"
-            onClick={() => handleOpenOverlay('insights')}
+            onClick={handleRefreshFinanceSummary}
             className="mt-5 flex items-center gap-2 rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-sky-200 transition hover:shadow-xl"
           >
-            <Brain className="h-4 w-4" />
-            Abrir insights
+            Atualizar conexões
           </button>
         </div>
       </aside>
@@ -449,14 +437,14 @@ export default function Home() {
                 Acompanhe saldos, despesas, obrigações e receba a orientação inteligente da plataforma em uma única interface.
               </p>
             </div>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={handleRefreshInsights}
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-sky-200 hover:text-sky-600"
-              >
-                Atualizar painel
-              </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleRefreshFinanceSummary}
+              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-sky-200 hover:text-sky-600"
+            >
+              Atualizar painel
+            </button>
               <AuthButton />
             </div>
           </header>
@@ -582,23 +570,23 @@ export default function Home() {
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">Assistente contable</h2>
                 <p className="text-sm text-slate-500">
-                  Insights personalizados e ações recomendadas para manter sua rotina em dia.
+                  Sugestões de rotina e atalhos que mantêm suas finanças organizadas diariamente.
                 </p>
               </div>
               <div className="space-y-4 text-sm text-slate-600">
                 <div className="rounded-3xl bg-gradient-to-br from-sky-500/10 via-white to-blue-500/10 p-5">
                   <p className="text-xs font-semibold uppercase tracking-[0.35em] text-sky-600">Sugerido agora</p>
                   <p className="mt-3 text-sm text-slate-700">
-                    Revise a categoria com maior crescimento neste mês e distribua limites com o apoio do relatório inteligente.
+                    Revise a categoria com maior crescimento neste mês e abra os relatórios para comparar períodos.
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => handleOpenOverlay('insights')}
+                  onClick={() => handleOpenOverlay('analytics')}
                   className="flex items-center justify-between gap-3 rounded-3xl border border-slate-200 bg-slate-50/90 px-4 py-3 text-left transition hover:border-sky-200 hover:bg-sky-50"
                 >
-                  <span className="text-sm font-medium text-slate-700">Abrir insights da IA</span>
-                  <span className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">tempo real</span>
+                  <span className="text-sm font-medium text-slate-700">Ver relatórios completos</span>
+                  <span className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">detalhes</span>
                 </button>
                 <button
                   type="button"

@@ -6,7 +6,7 @@ import FinContasLogo from '@/react-app/components/brand/FinContasLogo';
 
 interface HeroSectionProps {
   userName?: string | null;
-  onRefreshInsights: () => void;
+  onRefreshData: () => void;
   onOpenOverlay: (view: OverlayView) => void;
   thisMonthExpenses: number;
   totalExpenses: number;
@@ -14,7 +14,7 @@ interface HeroSectionProps {
 
 export default function HeroSection({
   userName,
-  onRefreshInsights,
+  onRefreshData,
   onOpenOverlay,
   thisMonthExpenses,
   totalExpenses,
@@ -34,20 +34,20 @@ export default function HeroSection({
             wordmarkClassName="text-lg"
           />
           <p className="text-xs font-medium uppercase tracking-[0.3em] text-emerald-600 sm:hidden" aria-hidden="true">
-            Fluxo financeiro com IA generativa
+            Fluxo financeiro conectado
           </p>
           <p className="hidden text-sm text-slate-600 sm:block">
-            Fluxo financeiro com IA generativa
+            Fluxo financeiro conectado
           </p>
         </div>
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={onRefreshInsights}
+            onClick={onRefreshData}
             className="inline-flex items-center gap-2 rounded-full border border-emerald-100/80 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100"
           >
             <RefreshCw className="h-4 w-4" />
-            Atualizar insights
+            Atualizar dados
           </button>
           <AuthButton />
         </div>
@@ -60,11 +60,11 @@ export default function HeroSection({
               Nova jornada financeira
             </span>
             <h1 className="text-4xl font-semibold leading-tight text-slate-900 sm:text-5xl lg:text-[3.5rem] lg:leading-[1.05]">
-              Controle financeiro com IA, agora em um fluxo contínuo
+              Controle financeiro conectado em um fluxo contínuo
               {firstName ? `, ${firstName}` : ''}.
             </h1>
             <p className="max-w-2xl text-lg text-slate-600">
-              Uma jornada hero-led que conecta seus gastos, insights automáticos e integrações Open Finance em um layout vertical envolvente.
+              Uma jornada hero-led que conecta seus gastos, relatórios completos e integrações Open Finance em um layout vertical envolvente.
             </p>
           </div>
 
@@ -79,10 +79,10 @@ export default function HeroSection({
             </button>
             <button
               type="button"
-              onClick={() => onOpenOverlay('insights')}
+              onClick={() => onOpenOverlay('analytics')}
               className="inline-flex items-center gap-3 rounded-full border border-slate-200 bg-white px-6 py-3 text-sm font-medium text-slate-700 transition hover:border-emerald-200 hover:text-emerald-700"
             >
-              Ver insights de IA
+              Ver relatórios completos
             </button>
           </div>
 
@@ -106,7 +106,7 @@ export default function HeroSection({
             <div className="rounded-3xl border border-emerald-100 bg-white p-6 shadow-2xl">
               <div className="flex items-center justify-between">
                 <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">Resumo diário</span>
-                <span className="text-xs text-slate-400">IA ativa</span>
+                <span className="text-xs text-slate-400">Dados sincronizados</span>
               </div>
               <div className="mt-6 space-y-4">
                 <div>
@@ -114,9 +114,9 @@ export default function HeroSection({
                   <p className="mt-1 text-3xl font-semibold text-slate-900">{formatCurrency(thisMonthExpenses)}</p>
                 </div>
                 <div className="rounded-2xl border border-emerald-100 bg-emerald-50/80 p-4">
-                  <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Recomendação</p>
+                  <p className="text-xs uppercase tracking-[0.3em] text-emerald-500">Dica rápida</p>
                   <p className="mt-2 text-sm text-slate-600">
-                    Ajuste o orçamento da categoria com maior crescimento e abra os insights completos para sugestões personalizadas.
+                    Ajuste o orçamento da categoria com maior crescimento e abra os relatórios para comparar períodos.
                   </p>
                 </div>
               </div>

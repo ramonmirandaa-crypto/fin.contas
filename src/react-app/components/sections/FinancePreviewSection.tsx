@@ -1,4 +1,4 @@
-import { ArrowUpRight, BarChart3, Brain, CreditCard, Sparkles, Wallet2, Zap } from 'lucide-react';
+import { ArrowUpRight, BarChart3, CreditCard, Sparkles, Wallet2, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/react-app/utils';
 import type { Expense } from '@/shared/types';
@@ -13,7 +13,6 @@ export type OverlayView =
   | 'investments'
   | 'loans'
   | 'banking'
-  | 'insights'
   | 'analytics'
   | 'notifications'
   | 'quick-actions';
@@ -62,12 +61,12 @@ export default function FinancePreviewSection({
         : 'Comece registrando gastos para descobrir padrões',
     },
     {
-      id: 'insights' as const,
-      title: 'Insights com IA',
-      description: 'Receba sugestões proativas e inteligência personalizada sobre seus hábitos.',
-      icon: Brain,
-      highlight: 'Recomendações automatizadas',
-      detail: 'Atualize para receber novos diagnósticos sempre que registrar um gasto.',
+      id: 'transactions' as const,
+      title: 'Gestão de transações',
+      description: 'Revise lançamentos, filtre categorias e organize seu histórico.',
+      icon: Sparkles,
+      highlight: `${expenses.length} movimentações registradas`,
+      detail: 'Acesse filtros avançados e categorização em massa para manter os dados limpos.',
     },
     {
       id: 'banking' as const,
