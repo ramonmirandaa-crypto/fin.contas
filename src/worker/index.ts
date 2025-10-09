@@ -116,6 +116,29 @@ const ensureDatabaseSchema = (db: D1Database) => {
       for (const statement of statements) {
         await db.prepare(statement).run();
       }
+
+      const addOptionalColumn = async (table: string, column: string, definition: string) => {
+        try {
+          await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run();
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (!message.includes('duplicate column name')) {
+            throw error;
+          }
+        }
+      };
+
+      await addOptionalColumn('pluggy_connections', 'client_user_id', 'TEXT');
+      await addOptionalColumn('pluggy_connections', 'connector_id', 'TEXT');
+      await addOptionalColumn('pluggy_connections', 'connector_name', 'TEXT');
+      await addOptionalColumn('pluggy_connections', 'connector_image_url', 'TEXT');
+      await addOptionalColumn('pluggy_connections', 'connector_primary_color', 'TEXT');
+      await addOptionalColumn('pluggy_connections', 'org_id', 'TEXT');
+      await addOptionalColumn('pluggy_connections', 'org_name', 'TEXT');
+      await addOptionalColumn('pluggy_connections', 'org_domain', 'TEXT');
+      await addOptionalColumn('pluggy_connections', 'status_detail', 'TEXT');
+      await addOptionalColumn('pluggy_connections', 'execution_status', 'TEXT');
+      await addOptionalColumn('pluggy_connections', 'last_sync_message', 'TEXT');
     })().catch(error => {
       schemaInitializationPromise = null;
       throw error;
@@ -172,6 +195,166 @@ const expenseSchema = z.object({
 // Simple error response helper
 const errorResponse = (message: string, status = 400) => {
   return Response.json({ error: message }, { status });
+};
+
+type PluggyConnectionUpdate = {
+  connectionStatus?: string | null;
+  statusDetail?: string | null;
+  executionStatus?: string | null;
+  lastSyncMessage?: string | null;
+  lastSyncAt?: 'now' | string | null;
+  connectorId?: string | null;
+  connectorName?: string | null;
+  connectorImageUrl?: string | null;
+  connectorPrimaryColor?: string | null;
+  clientUserId?: string | null;
+  orgId?: string | null;
+  orgName?: string | null;
+  orgDomain?: string | null;
+};
+
+const updatePluggyConnectionMetadata = async (
+  db: D1Database,
+  connectionId: number,
+  updates: PluggyConnectionUpdate
+) => {
+  const setClauses: string[] = [];
+  const values: any[] = [];
+
+  const addNullableUpdate = (column: string, value: string | null | undefined) => {
+    if (value !== undefined) {
+      setClauses.push(`${column} = ?`);
+      values.push(value);
+    }
+  };
+
+  addNullableUpdate('connection_status', updates.connectionStatus);
+  addNullableUpdate('status_detail', updates.statusDetail);
+  addNullableUpdate('execution_status', updates.executionStatus);
+  addNullableUpdate('last_sync_message', updates.lastSyncMessage);
+  addNullableUpdate('connector_id', updates.connectorId);
+  addNullableUpdate('connector_name', updates.connectorName);
+  addNullableUpdate('connector_image_url', updates.connectorImageUrl);
+  addNullableUpdate('connector_primary_color', updates.connectorPrimaryColor);
+  addNullableUpdate('client_user_id', updates.clientUserId);
+  addNullableUpdate('org_id', updates.orgId);
+  addNullableUpdate('org_name', updates.orgName);
+  addNullableUpdate('org_domain', updates.orgDomain);
+
+  if ('lastSyncAt' in updates) {
+    if (updates.lastSyncAt === 'now') {
+      setClauses.push("last_sync_at = datetime('now')");
+    } else {
+      setClauses.push('last_sync_at = ?');
+      values.push(updates.lastSyncAt);
+    }
+  }
+
+  setClauses.push("updated_at = datetime('now')");
+
+  const sql = `UPDATE pluggy_connections SET ${setClauses.join(', ')} WHERE id = ?`;
+  await db.prepare(sql).bind(...values, connectionId).run();
+};
+
+const formatDateOnly = (date: Date) => date.toISOString().split('T')[0];
+
+const flattenObject = (obj: Record<string, any>, prefix = ''): Record<string, any> => {
+  const result: Record<string, any> = {};
+
+  Object.entries(obj).forEach(([key, value]) => {
+    const newKey = prefix ? `${prefix}.${key}` : key;
+
+    if (value === null || value === undefined) {
+      return;
+    }
+
+    if (typeof value === 'object' && !Array.isArray(value)) {
+      Object.assign(result, flattenObject(value as Record<string, any>, newKey));
+    } else {
+      result[newKey] = value;
+    }
+  });
+
+  return result;
+};
+
+const getPayeeName = (transaction: Record<string, any>) => {
+  const merchant = transaction.merchant as Record<string, any> | undefined;
+  if (merchant) {
+    return merchant.name || merchant.businessName || '';
+  }
+
+  const paymentData = transaction.paymentData as Record<string, any> | undefined;
+  if (paymentData?.payer?.name) {
+    return paymentData.payer.name;
+  }
+
+  if (paymentData?.payee?.name) {
+    return paymentData.payee.name;
+  }
+
+  return transaction.description || '';
+};
+
+const getPluggyCredentials = async (db: D1Database, userId: string) => {
+  const clientIdStmt = db.prepare("SELECT config_value FROM user_configs WHERE user_id = ? AND config_key = 'pluggy_client_id'");
+  const clientSecretStmt = db.prepare("SELECT config_value FROM user_configs WHERE user_id = ? AND config_key = 'pluggy_client_secret'");
+
+  const [clientIdRow, clientSecretRow] = await Promise.all([
+    clientIdStmt.bind(userId).first() as Promise<{ config_value?: string } | null>,
+    clientSecretStmt.bind(userId).first() as Promise<{ config_value?: string } | null>
+  ]);
+
+  if (!clientIdRow?.config_value || !clientSecretRow?.config_value) {
+    return null;
+  }
+
+  return {
+    clientId: clientIdRow.config_value,
+    clientSecret: clientSecretRow.config_value
+  };
+};
+
+const getPluggyClientForUser = async (db: D1Database, userId: string) => {
+  const credentials = await getPluggyCredentials(db, userId);
+  if (!credentials) {
+    return null;
+  }
+
+  return new PluggyClient(credentials.clientId, credentials.clientSecret);
+};
+
+const getUserPluggyConnections = async (db: D1Database, userId: string) => {
+  const stmt = db.prepare('SELECT id, pluggy_item_id FROM pluggy_connections WHERE user_id = ?');
+  const result = await stmt.bind(userId).all();
+  const rows = (result.results as Array<{ id: number; pluggy_item_id: string }> | undefined) ?? [];
+  return rows;
+};
+
+const fetchAllTransactionsForAccount = async (
+  client: PluggyClient,
+  accountId: string,
+  startDate?: string
+) => {
+  let page = 1;
+  const pageSize = 500;
+  const transactions: any[] = [];
+  let hasNextPage = true;
+
+  while (hasNextPage) {
+    const result = await client.getTransactions({
+      accountId,
+      from: startDate,
+      page,
+      pageSize
+    });
+
+    transactions.push(...result.transactions);
+    hasNextPage = result.hasNextPage;
+    page += 1;
+  }
+
+  return transactions;
 };
 
 const USER_CONFIG_INSERT_SQL = `
@@ -259,6 +442,239 @@ const authMiddleware: MiddlewareHandler<{ Bindings: Env; Variables: { auth: Auth
     return errorResponse('Unauthorized', 401);
   }
 };
+
+const pluggyTransactionsRequestSchema = z.object({
+  accountId: z.string().min(1),
+  startDate: z.string().optional()
+});
+
+app.post('/api/pluggy/status', authMiddleware, async (c) => {
+  const userId = getUserId(c);
+
+  try {
+    const [credentials, connections] = await Promise.all([
+      getPluggyCredentials(c.env.DB, userId),
+      getUserPluggyConnections(c.env.DB, userId)
+    ]);
+
+    const configured = Boolean(credentials && connections.length > 0);
+
+    return Response.json({
+      status: 'ok',
+      data: {
+        configured,
+        hasCredentials: Boolean(credentials),
+        connectionCount: connections.length
+      }
+    });
+  } catch (error) {
+    console.error('Error computing Pluggy status:', error);
+    return Response.json({
+      status: 'ok',
+      data: {
+        configured: false,
+        hasCredentials: false,
+        connectionCount: 0,
+        error: error instanceof Error ? error.message : 'Failed to compute Pluggy status'
+      }
+    });
+  }
+});
+
+app.post('/api/pluggy/accounts', authMiddleware, async (c) => {
+  const userId = getUserId(c);
+
+  try {
+    const client = await getPluggyClientForUser(c.env.DB, userId);
+
+    if (!client) {
+      return Response.json({
+        status: 'ok',
+        data: {
+          accounts: [],
+          error: 'Pluggy credentials not configured'
+        }
+      });
+    }
+
+    const connections = await getUserPluggyConnections(c.env.DB, userId);
+
+    if (connections.length === 0) {
+      return Response.json({
+        status: 'ok',
+        data: {
+          accounts: [],
+          error: 'Nenhuma conexão Pluggy cadastrada'
+        }
+      });
+    }
+
+    const accounts: any[] = [];
+
+    for (const connection of connections) {
+      try {
+        const pluggyAccounts = await client.getAccounts(connection.pluggy_item_id);
+        accounts.push(...pluggyAccounts);
+
+        const orgInfo = pluggyAccounts.find(account => account.org)?.org ?? null;
+        await updatePluggyConnectionMetadata(c.env.DB, connection.id, {
+          orgId: orgInfo?.id ?? null,
+          orgName: orgInfo?.name ?? null,
+          orgDomain: orgInfo?.domain ?? null
+        });
+      } catch (accountError) {
+        console.error(`Error fetching accounts for connection ${connection.id}:`, accountError);
+      }
+    }
+
+    return Response.json({
+      status: 'ok',
+      data: {
+        accounts
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching Pluggy accounts:', error);
+    return Response.json({
+      status: 'ok',
+      data: {
+        accounts: [],
+        error: error instanceof Error ? error.message : 'Erro ao buscar contas do Pluggy'
+      }
+    });
+  }
+});
+
+app.post('/api/pluggy/transactions', authMiddleware, async (c) => {
+  const userId = getUserId(c);
+
+  try {
+    const payload = pluggyTransactionsRequestSchema.parse(await c.req.json());
+    const client = await getPluggyClientForUser(c.env.DB, userId);
+
+    if (!client) {
+      return Response.json({
+        status: 'ok',
+        data: {
+          error: 'Pluggy credentials not configured'
+        }
+      });
+    }
+
+    const account = await client.getAccount(payload.accountId);
+    const sandboxAccount = account.owner === 'John Doe';
+
+    const startDate = payload.startDate ? new Date(payload.startDate) : undefined;
+    const formattedStartDate = sandboxAccount
+      ? '2000-01-01'
+      : startDate
+        ? formatDateOnly(startDate)
+        : undefined;
+
+    const transactions = await fetchAllTransactionsForAccount(
+      client,
+      payload.accountId,
+      formattedStartDate
+    );
+
+    let startingBalance = Math.round((account.balance || 0) * 100);
+    if (account.type?.toUpperCase() === 'CREDIT') {
+      startingBalance = -startingBalance;
+    }
+
+    const balances = [
+      {
+        balanceAmount: {
+          amount: startingBalance,
+          currency: account.currencyCode
+        },
+        balanceType: 'expected',
+        referenceDate: account.updatedAt ? formatDateOnly(new Date(account.updatedAt)) : formatDateOnly(new Date())
+      }
+    ];
+
+    const booked: any[] = [];
+    const pending: any[] = [];
+    const all: any[] = [];
+
+    for (const rawTransaction of transactions) {
+      const transaction = { ...rawTransaction } as Record<string, any>;
+
+      const isBooked = transaction.status !== 'PENDING';
+      const transactionDate = new Date(transaction.date);
+
+      if (startDate && transactionDate < startDate && !transaction.sandbox) {
+        continue;
+      }
+
+      if (account.type?.toUpperCase() === 'CREDIT') {
+        if (typeof transaction.amountInAccountCurrency === 'number') {
+          transaction.amountInAccountCurrency *= -1;
+        }
+        if (typeof transaction.amount === 'number') {
+          transaction.amount *= -1;
+        }
+      }
+
+      const amountInCurrency = Math.round(
+        ((transaction.amountInAccountCurrency ?? transaction.amount) || 0) * 100
+      ) / 100;
+
+      const baseTransaction = {
+        booked: isBooked,
+        date: formatDateOnly(transactionDate),
+        payeeName: getPayeeName(transaction),
+        notes: transaction.descriptionRaw || transaction.description,
+        transactionAmount: {
+          amount: amountInCurrency,
+          currency: transaction.currencyCode || account.currencyCode
+        },
+        transactionId: transaction.id,
+        sortOrder: transactionDate.getTime()
+      };
+
+      delete transaction.amount;
+
+      const flattened = {
+        ...flattenObject(transaction),
+        ...baseTransaction
+      };
+
+      if (isBooked) {
+        booked.push(flattened);
+      } else {
+        pending.push(flattened);
+      }
+
+      all.push(flattened);
+    }
+
+    const sortByDateDesc = (a: any, b: any) => b.sortOrder - a.sortOrder;
+
+    return Response.json({
+      status: 'ok',
+      data: {
+        balances,
+        startingBalance,
+        transactions: {
+          all: all.sort(sortByDateDesc),
+          booked: booked.sort(sortByDateDesc),
+          pending: pending.sort(sortByDateDesc)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching Pluggy transactions:', error);
+    const message = error instanceof Error ? error.message : 'Erro ao buscar transações do Pluggy';
+
+    return Response.json({
+      status: 'ok',
+      data: {
+        error: message
+      }
+    });
+  }
+});
 
 const normalizePrismaValue = (value: unknown): any => {
   if (value === null || value === undefined) {
@@ -1949,20 +2365,54 @@ app.post('/api/pluggy/add-connection', authMiddleware, async (c) => {
     
     // Add connection to database
     const insertStmt = c.env.DB.prepare(`
-      INSERT INTO pluggy_connections (user_id, pluggy_item_id, institution_name, connection_status, created_at, updated_at)
+      INSERT INTO pluggy_connections (
+        user_id,
+        pluggy_item_id,
+        institution_name,
+        connection_status,
+        created_at,
+        updated_at
+      )
       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
     `);
-    
-    await insertStmt.bind(
+
+    const insertResult = await insertStmt.bind(
       userId,
       itemId.trim(),
       item.connector?.name?.trim() || item.clientUserId || 'Unknown Institution',
       item.status || 'CONNECTED'
     ).run();
 
-    return Response.json({ 
-      success: true, 
-      message: 'Connection added successfully' 
+    const connectionId = insertResult.meta?.last_row_id;
+
+    if (connectionId) {
+      let orgInfo: { id?: string | null; name?: string | null; domain?: string | null } | null = null;
+
+      try {
+        const accounts = await client.getAccounts(itemId.trim());
+        orgInfo = accounts.find(account => account.org)?.org ?? null;
+      } catch (accountError) {
+        console.error(`Error fetching accounts metadata for item ${itemId}:`, accountError);
+      }
+
+      await updatePluggyConnectionMetadata(c.env.DB, connectionId, {
+        connectorId: item.connector?.id ?? null,
+        connectorName: item.connector?.name ?? null,
+        connectorImageUrl: item.connector?.imageUrl ?? null,
+        connectorPrimaryColor: item.connector?.primaryColor ?? null,
+        clientUserId: item.clientUserId ?? null,
+        statusDetail: item.statusDetail ?? null,
+        executionStatus: item.executionStatus ?? null,
+        orgId: orgInfo?.id ?? null,
+        orgName: orgInfo?.name ?? null,
+        orgDomain: orgInfo?.domain ?? null,
+        lastSyncMessage: 'Conexão cadastrada com sucesso'
+      });
+    }
+
+    return Response.json({
+      success: true,
+      message: 'Connection added successfully'
     });
   } catch (error) {
     console.error('Error adding pluggy connection:', error);
@@ -2068,13 +2518,15 @@ app.post('/api/pluggy/sync/:itemId?', authMiddleware, async (c) => {
         );
         
         console.log(`[${syncId}] Found ${transactions.length} transactions for connection ${connection.id}`);
-        
+
+        let connectionNewTransactions = 0;
+
         // Import transactions as expenses (simplified for now)
         for (const transaction of transactions) {
           try {
             if (transaction.amount < 0) { // Only import expenses
               const category = mapPluggyCategory(transaction);
-              
+
               // Check if transaction already exists
               const existingStmt = c.env.DB.prepare("SELECT id FROM expenses WHERE user_id = ? AND pluggy_transaction_id = ?");
               const existing = await existingStmt.bind(userId, transaction.id).first();
@@ -2098,9 +2550,10 @@ app.post('/api/pluggy/sync/:itemId?', authMiddleware, async (c) => {
                   userId,
                   transaction.id
                 ).run();
-                
+
                 if (result.success) {
                   totalNewTransactions++;
+                  connectionNewTransactions++;
                 }
               }
             }
@@ -2110,19 +2563,44 @@ app.post('/api/pluggy/sync/:itemId?', authMiddleware, async (c) => {
             errors.push(`Transaction ${transaction.id}: ${errorMsg}`);
           }
         }
-        
-        // Update last sync time
-        const updateStmt = c.env.DB.prepare(`
-          UPDATE pluggy_connections 
-          SET last_sync_at = datetime('now'), updated_at = datetime('now')
-          WHERE id = ?
-        `);
-        await updateStmt.bind(connection.id as number).run();
-        
+
+        let itemDetails: any = null;
+        try {
+          itemDetails = await client.getItem(connection.pluggy_item_id as string);
+        } catch (itemError) {
+          console.error(`[${syncId}] Failed to refresh item details for ${connection.pluggy_item_id}:`, itemError);
+        }
+
+        const successMessage = `Última sincronização em ${new Date().toLocaleString('pt-BR')} (${connectionNewTransactions} novas despesas).`;
+
+        await updatePluggyConnectionMetadata(c.env.DB, connection.id as number, {
+          connectionStatus: itemDetails?.status ?? 'CONNECTED',
+          statusDetail: itemDetails?.statusDetail ?? null,
+          executionStatus: itemDetails?.executionStatus ?? null,
+          connectorId: itemDetails?.connector?.id ?? null,
+          connectorName: itemDetails?.connector?.name ?? null,
+          connectorImageUrl: itemDetails?.connector?.imageUrl ?? null,
+          connectorPrimaryColor: itemDetails?.connector?.primaryColor ?? null,
+          clientUserId: itemDetails?.clientUserId ?? null,
+          lastSyncMessage: successMessage,
+          lastSyncAt: 'now'
+        });
+
       } catch (connectionError) {
         const errorMsg = connectionError instanceof Error ? connectionError.message : String(connectionError);
         console.error(`[${syncId}] Error syncing connection ${connection.id}:`, errorMsg);
         errors.push(`Connection ${connection.id}: ${errorMsg}`);
+
+        try {
+          await updatePluggyConnectionMetadata(c.env.DB, connection.id as number, {
+            connectionStatus: 'ERROR',
+            statusDetail: errorMsg,
+            lastSyncMessage: `Falha na sincronização: ${errorMsg}`,
+            lastSyncAt: 'now'
+          });
+        } catch (updateError) {
+          console.error(`[${syncId}] Failed to persist sync error for connection ${connection.id}:`, updateError);
+        }
       }
     }
 
