@@ -162,6 +162,25 @@ model Transaction {
   @@index([user_id, date])
 }
 
+model Expense {
+  id                     Int      @id @default(autoincrement())
+  user_id                String
+  amount                 Decimal  @db.Decimal(18, 2)
+  description            String
+  category               String
+  date                   DateTime
+  pluggy_transaction_id  String?
+  is_synced_from_bank    Boolean  @default(false)
+  created_at             DateTime @default(now())
+  updated_at             DateTime @updatedAt
+
+  @@map("expenses")
+  @@index([user_id], map: "expenses_user_id_idx")
+  @@index([user_id, date], map: "expenses_user_id_date_idx")
+  @@index([user_id, category], map: "expenses_user_id_category_idx")
+  @@unique([user_id, pluggy_transaction_id], map: "expenses_user_id_pluggy_transaction_id_key")
+}
+
 model Budget {
   id            Int       @id @default(autoincrement())
   user_id       String
