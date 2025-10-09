@@ -11,6 +11,7 @@ export const PluggyConnectTokenSchema = z.object({
 export const PluggyItemSchema = z.object({
   id: z.string(),
   connector: z.object({
+    id: z.string().nullish(),
     name: z.string(),
     institutionUrl: z.string().nullish(),
     imageUrl: z.string().nullish(),
@@ -38,6 +39,17 @@ export const PluggyAccountSchema = z.object({
   number: z.string().nullish(),
   owner: z.string().nullish(),
   taxNumber: z.string().nullish(),
+  connector: z.object({
+    id: z.string().nullish(),
+    name: z.string().nullish(),
+    imageUrl: z.string().nullish(),
+    primaryColor: z.string().nullish()
+  }).nullish(),
+  org: z.object({
+    id: z.string().nullish(),
+    name: z.string().nullish(),
+    domain: z.string().nullish()
+  }).nullish(),
   // Bank account specific data
   bankData: z.object({
     transferNumber: z.string().nullish(),

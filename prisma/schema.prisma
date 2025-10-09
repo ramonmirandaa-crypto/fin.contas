@@ -223,3 +223,66 @@ model Goal {
   @@map("goals")
   @@index([user_id])
 }
+
+model UserConfig {
+  id           Int      @id @default(autoincrement())
+  user_id      String
+  config_key   String
+  config_value String
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@map("user_configs")
+  @@unique([user_id, config_key], map: "idx_user_configs_user_key")
+}
+
+model PluggyConnection {
+  id                      Int       @id @default(autoincrement())
+  user_id                 String
+  pluggy_item_id          String
+  institution_name        String?
+  connection_status       String?
+  last_sync_at            DateTime?
+  client_user_id          String?
+  connector_id            String?
+  connector_name          String?
+  connector_image_url     String?
+  connector_primary_color String?
+  org_id                  String?
+  org_name                String?
+  org_domain              String?
+  status_detail           String?
+  execution_status        String?
+  last_sync_message       String?
+  created_at              DateTime  @default(now())
+  updated_at              DateTime  @updatedAt
+
+  @@map("pluggy_connections")
+  @@unique([user_id, pluggy_item_id])
+  @@index([user_id], map: "idx_pluggy_connections_user")
+}
+
+model WebhookConfig {
+  id          Int      @id @default(autoincrement())
+  user_id     String   @unique
+  webhook_url String
+  events      String?
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@map("webhook_configs")
+}
+
+model WebhookLog {
+  id            Int      @id @default(autoincrement())
+  webhook_id    String
+  success       Boolean
+  error_message String?
+  attempt_at    DateTime?
+  created_at    DateTime @default(now())
+
+  @@map("webhook_logs")
+  @@index([webhook_id], map: "idx_webhook_logs_webhook_id")
+  @@index([created_at], map: "idx_webhook_logs_created_at")
+}

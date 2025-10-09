@@ -16,6 +16,16 @@ interface PluggyConnection {
   last_sync_at: string | null;
   created_at: string;
   updated_at: string;
+  connector_name?: string | null;
+  connector_image_url?: string | null;
+  connector_primary_color?: string | null;
+  connector_id?: string | null;
+  client_user_id?: string | null;
+  org_name?: string | null;
+  org_domain?: string | null;
+  status_detail?: string | null;
+  execution_status?: string | null;
+  last_sync_message?: string | null;
 }
 
 interface SyncStatus {
@@ -803,9 +813,25 @@ export default function PluggyManager() {
                   <p className="text-xs text-gray-500 mt-1">
                     Item ID: {connection.pluggy_item_id}
                   </p>
+                  {connection.org_name && (
+                    <p className="text-xs text-gray-500">
+                      Organização: {connection.org_name}
+                      {connection.org_domain ? ` (${connection.org_domain})` : ''}
+                    </p>
+                  )}
                   <p className="text-xs text-gray-500">
                     Última sincronização: {formatLastSync(connection.last_sync_at)}
                   </p>
+                  {connection.last_sync_message && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      {connection.last_sync_message}
+                    </p>
+                  )}
+                  {connection.status_detail && connection.status_detail !== connection.connection_status && (
+                    <p className="text-xs text-amber-600 mt-1">
+                      Detalhes: {connection.status_detail}
+                    </p>
+                  )}
                 </div>
               </div>
               
