@@ -451,6 +451,10 @@ const pluggyTransactionsRequestSchema = z.object({
 app.post('/api/pluggy/status', authMiddleware, async (c) => {
   const userId = getUserId(c);
 
+  if (!userId) {
+    return errorResponse('Unauthorized', 401);
+  }
+
   try {
     const [credentials, connections] = await Promise.all([
       getPluggyCredentials(c.env.DB, userId),
@@ -483,6 +487,10 @@ app.post('/api/pluggy/status', authMiddleware, async (c) => {
 
 app.post('/api/pluggy/accounts', authMiddleware, async (c) => {
   const userId = getUserId(c);
+
+  if (!userId) {
+    return errorResponse('Unauthorized', 401);
+  }
 
   try {
     const client = await getPluggyClientForUser(c.env.DB, userId);
@@ -547,6 +555,10 @@ app.post('/api/pluggy/accounts', authMiddleware, async (c) => {
 
 app.post('/api/pluggy/transactions', authMiddleware, async (c) => {
   const userId = getUserId(c);
+
+  if (!userId) {
+    return errorResponse('Unauthorized', 401);
+  }
 
   try {
     const payload = pluggyTransactionsRequestSchema.parse(await c.req.json());
