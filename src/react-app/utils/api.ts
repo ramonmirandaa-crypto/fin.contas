@@ -41,6 +41,62 @@ const secondaryBaseUrl = explicitBaseUrl
   ? (hostFallbackBaseUrl && explicitBaseUrl !== hostFallbackBaseUrl ? hostFallbackBaseUrl : '')
   : hostFallbackBaseUrl;
 
+type ClerkSessionLike = {
+  getToken: (options?: Record<string, unknown>) => Promise<string | null>;
+};
+
+type ClerkGlobalLike = {
+  session?: ClerkSessionLike | null;
+};
+
+function getAuthorizationHeader(headers?: HeadersInit | null): string | null {
+  if (!headers) {
+    return null;
+  }
+
+  try {
+    return new Headers(headers).get('authorization');
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function withClerkAuthorization(init?: RequestInit): Promise<RequestInit> {
+  const baseInit: RequestInit = init ? { ...init } : {};
+
+  if (typeof window === 'undefined') {
+    return baseInit;
+  }
+
+  if (getAuthorizationHeader(baseInit.headers)) {
+    return baseInit;
+  }
+
+  const clerk = (window as unknown as { Clerk?: ClerkGlobalLike }).Clerk;
+  const session = clerk?.session;
+  const getToken = session?.getToken?.bind(session);
+
+  if (!getToken) {
+    return baseInit;
+  }
+
+  try {
+    const token = await getToken();
+
+    if (!token) {
+      return baseInit;
+    }
+
+    const headers = new Headers(baseInit.headers ?? {});
+    headers.set('Authorization', `Bearer ${token}`);
+    baseInit.headers = headers;
+  } catch (error) {
+    console.warn('Falha ao obter token de sessão do Clerk:', error);
+  }
+
+  return baseInit;
+}
+
 export class OfflineError extends Error {
   readonly code = 'ERR_OFFLINE';
 
@@ -157,9 +213,10 @@ async function executeFetch(url: string, baseUrl: string, init?: RequestInit) {
 }
 
 export async function apiFetch(path: string, init?: RequestInit) {
-  const method = init?.method?.toUpperCase?.() ?? 'GET';
+  const requestInit = await withClerkAuthorization(init);
+  const method = requestInit.method?.toUpperCase?.() ?? 'GET';
   const primaryUrl = buildUrl(path, primaryBaseUrl);
-  const primaryResponse = await executeFetch(primaryUrl, primaryBaseUrl, init);
+  const primaryResponse = await executeFetch(primaryUrl, primaryBaseUrl, requestInit);
 
   if (shouldRetryWithFallback(primaryResponse, primaryUrl, method)) {
     if (typeof primaryResponse.body?.cancel === 'function') {
@@ -167,7 +224,7 @@ export async function apiFetch(path: string, init?: RequestInit) {
     }
 
     const fallbackUrl = buildUrl(path, secondaryBaseUrl);
-    return executeFetch(fallbackUrl, secondaryBaseUrl, init);
+    return executeFetch(fallbackUrl, secondaryBaseUrl, requestInit);
   }
 
   return primaryResponse;
