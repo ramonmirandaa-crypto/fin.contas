@@ -18,7 +18,7 @@ const ensureScheme = (value: string) => {
   return `https://${value}`;
 };
 
-const getFallbackBaseUrl = () => {
+const getHostFallbackBaseUrl = () => {
   if (typeof window === 'undefined') {
     return '';
   }
@@ -32,15 +32,21 @@ const getFallbackBaseUrl = () => {
 };
 
 const explicitBaseUrl = ensureScheme(sanitizedBaseUrl);
-const hostFallbackBaseUrl = getFallbackBaseUrl();
 
-// When an explicit base URL isn't provided we default to the host-specific fallback so the
-// app calls the deployed API directly instead of relying on same-origin routing. We only
-// keep a secondary fallback when an explicit base differs from that host mapping.
-const primaryBaseUrl = explicitBaseUrl || hostFallbackBaseUrl || '';
-const secondaryBaseUrl = explicitBaseUrl && hostFallbackBaseUrl && explicitBaseUrl !== hostFallbackBaseUrl
-  ? hostFallbackBaseUrl
-  : '';
+const resolveBaseUrls = () => {
+  const hostFallbackBaseUrl = getHostFallbackBaseUrl();
+  const primaryBaseUrl = explicitBaseUrl || hostFallbackBaseUrl || '';
+  const secondaryBaseUrl =
+    explicitBaseUrl && hostFallbackBaseUrl && explicitBaseUrl !== hostFallbackBaseUrl
+      ? hostFallbackBaseUrl
+      : '';
+
+  return {
+    primaryBaseUrl,
+    secondaryBaseUrl,
+    hostFallbackBaseUrl,
+  };
+};
 
 type ClerkSessionLike = {
   getToken: (options?: Record<string, unknown>) => Promise<string | null>;
@@ -163,36 +169,53 @@ function resolveAttemptedUrl(attemptedUrl: string): string {
   return `${window.location.origin}${normalizedPath}`;
 }
 
-function shouldRetryWithFallback(response: Response, attemptedUrl: string, method: string): boolean {
-  if (typeof window === 'undefined') {
-    return false;
-  }
+type FallbackResolution = {
+  attemptedBaseUrl: string;
+  hostFallbackBaseUrl: string;
+  secondaryBaseUrl: string;
+};
 
-  if (!secondaryBaseUrl) {
-    return false;
+function resolveFallbackBaseUrl(
+  response: Response,
+  attemptedUrl: string,
+  method: string,
+  { attemptedBaseUrl, hostFallbackBaseUrl, secondaryBaseUrl }: FallbackResolution,
+): string {
+  if (typeof window === 'undefined') {
+    return '';
   }
 
   const resolvedUrl = resolveAttemptedUrl(attemptedUrl);
 
   if (!resolvedUrl.startsWith(window.location.origin)) {
-    return false;
+    return '';
   }
 
-  if (response.status === 404 || response.status === 405) {
-    return true;
+  if (!secondaryBaseUrl && (!hostFallbackBaseUrl || hostFallbackBaseUrl === attemptedBaseUrl)) {
+    return '';
   }
 
-  const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+  if (response.status !== 404 && response.status !== 405) {
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
 
-  if (!contentType.includes('text/html')) {
-    return false;
+    if (!contentType.includes('text/html')) {
+      return '';
+    }
+
+    if (!resolvedUrl.includes('/api/') && method === 'GET') {
+      return '';
+    }
   }
 
-  if (resolvedUrl.includes('/api/')) {
-    return true;
+  if (secondaryBaseUrl && secondaryBaseUrl !== attemptedBaseUrl) {
+    return secondaryBaseUrl;
   }
 
-  return method !== 'GET';
+  if (hostFallbackBaseUrl && hostFallbackBaseUrl !== attemptedBaseUrl) {
+    return hostFallbackBaseUrl;
+  }
+
+  return '';
 }
 
 async function executeFetch(url: string, baseUrl: string, init?: RequestInit) {
@@ -214,23 +237,31 @@ async function executeFetch(url: string, baseUrl: string, init?: RequestInit) {
 }
 
 export async function apiFetch(path: string, init?: RequestInit) {
+  const { primaryBaseUrl, secondaryBaseUrl, hostFallbackBaseUrl } = resolveBaseUrls();
   const requestInit = await withClerkAuthorization(init);
   const method = requestInit.method?.toUpperCase?.() ?? 'GET';
   const primaryUrl = buildUrl(path, primaryBaseUrl);
   const primaryResponse = await executeFetch(primaryUrl, primaryBaseUrl, requestInit);
 
-  if (shouldRetryWithFallback(primaryResponse, primaryUrl, method)) {
+  const fallbackBaseUrl = resolveFallbackBaseUrl(primaryResponse, primaryUrl, method, {
+    attemptedBaseUrl: primaryBaseUrl,
+    hostFallbackBaseUrl,
+    secondaryBaseUrl,
+  });
+
+  if (fallbackBaseUrl) {
     if (typeof primaryResponse.body?.cancel === 'function') {
       primaryResponse.body.cancel().catch(() => {});
     }
 
-    const fallbackUrl = buildUrl(path, secondaryBaseUrl);
-    return executeFetch(fallbackUrl, secondaryBaseUrl, requestInit);
+    const fallbackUrl = buildUrl(path, fallbackBaseUrl);
+    return executeFetch(fallbackUrl, fallbackBaseUrl, requestInit);
   }
 
   return primaryResponse;
 }
 
 export function getApiUrl(path: string): string {
+  const { primaryBaseUrl, secondaryBaseUrl } = resolveBaseUrls();
   return buildUrl(path, primaryBaseUrl || secondaryBaseUrl);
 }
