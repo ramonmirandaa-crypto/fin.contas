@@ -24,8 +24,8 @@ VITE_API_BASE_URL="https://seu-worker.exemplo"
 
 O `publishable key` (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`) é utilizado no front-end Next.js recém configurado
 e o `secret key` mantém a validação de sessões no Worker.
+O build Vite também aceita `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, mas ainda é recomendável manter `VITE_CLERK_PUBLISHABLE_KEY` configurado enquanto a migração estiver em andamento.
 `VITE_API_BASE_URL` é opcional; defina-o quando o Worker estiver hospedado em um domínio diferente para que o front-end consiga chamar a API.
-Caso esteja migrando gradualmente do Vite para o Next.js, mantenha `VITE_CLERK_PUBLISHABLE_KEY` configurado até que o novo front-end esteja em produção.
 
 ### Prisma tooling
 
