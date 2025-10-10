@@ -510,6 +510,22 @@ const errorResponse = (message: string, status = 400) => {
   return Response.json({ error: message }, { status });
 };
 
+const preflightResponse = (origin: string | null | undefined, allowMethods: string[]) => {
+  const headers = new Headers({
+    'Access-Control-Allow-Methods': allowMethods.join(', '),
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Max-Age': '86400',
+    'Vary': 'Origin',
+  });
+
+  if (origin) {
+    headers.set('Access-Control-Allow-Origin', origin);
+  }
+
+  return new Response(null, { status: 204, headers });
+};
+
 type PluggyConnectionUpdate = {
   connectionStatus?: string | null;
   statusDetail?: string | null;
@@ -761,6 +777,8 @@ const pluggyTransactionsRequestSchema = z.object({
   startDate: z.string().optional()
 });
 
+app.options('/api/pluggy/status', (c) => preflightResponse(c.req.header('Origin'), ['POST', 'OPTIONS']));
+
 app.post('/api/pluggy/status', authMiddleware, async (c) => {
   const userId = getUserId(c);
 
@@ -797,6 +815,8 @@ app.post('/api/pluggy/status', authMiddleware, async (c) => {
     });
   }
 });
+
+app.options('/api/pluggy/accounts', (c) => preflightResponse(c.req.header('Origin'), ['POST', 'OPTIONS']));
 
 app.post('/api/pluggy/accounts', authMiddleware, async (c) => {
   const userId = getUserId(c);
@@ -865,6 +885,8 @@ app.post('/api/pluggy/accounts', authMiddleware, async (c) => {
     });
   }
 });
+
+app.options('/api/pluggy/transactions', (c) => preflightResponse(c.req.header('Origin'), ['POST', 'OPTIONS']));
 
 app.post('/api/pluggy/transactions', authMiddleware, async (c) => {
   const userId = getUserId(c);
@@ -2565,7 +2587,7 @@ app.get('/api/pluggy/connections', authMiddleware, async (c) => {
   }
 });
 
-app.options('/api/pluggy/config', () => new Response(null, { status: 204 }));
+app.options('/api/pluggy/config', (c) => preflightResponse(c.req.header('Origin'), ['GET', 'POST', 'OPTIONS']));
 
 app.get('/api/pluggy/config', authMiddleware, async (c) => {
   const userId = getUserId(c);
@@ -2629,6 +2651,8 @@ app.post('/api/pluggy/config', authMiddleware, async (c) => {
   }
 });
 
+app.options('/api/pluggy/test-connection', (c) => preflightResponse(c.req.header('Origin'), ['POST', 'OPTIONS']));
+
 app.post('/api/pluggy/test-connection', authMiddleware, async (c) => {
   try {
     const { clientId, clientSecret } = await c.req.json();
@@ -2653,6 +2677,8 @@ app.post('/api/pluggy/test-connection', authMiddleware, async (c) => {
     }, { status: 400 });
   }
 });
+
+app.options('/api/pluggy/add-connection', (c) => preflightResponse(c.req.header('Origin'), ['POST', 'OPTIONS']));
 
 app.post('/api/pluggy/add-connection', authMiddleware, async (c) => {
   const userId = getUserId(c);
@@ -2747,6 +2773,8 @@ app.post('/api/pluggy/add-connection', authMiddleware, async (c) => {
   }
 });
 
+app.options('/api/pluggy/connections/:id', (c) => preflightResponse(c.req.header('Origin'), ['DELETE', 'OPTIONS']));
+
 app.delete('/api/pluggy/connections/:id', authMiddleware, async (c) => {
   const userId = getUserId(c);
   const connectionId = c.req.param('id');
@@ -2765,6 +2793,8 @@ app.delete('/api/pluggy/connections/:id', authMiddleware, async (c) => {
     return errorResponse('Failed to remove connection', 500);
   }
 });
+
+app.options('/api/pluggy/sync/:itemId?', (c) => preflightResponse(c.req.header('Origin'), ['POST', 'OPTIONS']));
 
 app.post('/api/pluggy/sync/:itemId?', authMiddleware, async (c) => {
   const userId = getUserId(c);
@@ -2997,6 +3027,8 @@ app.get('/api/pluggy/webhook-config', authMiddleware, async (c) => {
   }
 });
 
+app.options('/api/pluggy/webhook-config', (c) => preflightResponse(c.req.header('Origin'), ['POST', 'OPTIONS']));
+
 app.post('/api/pluggy/webhook-config', authMiddleware, async (c) => {
   const userId = getUserId(c);
 
@@ -3034,6 +3066,8 @@ app.post('/api/pluggy/webhook-config', authMiddleware, async (c) => {
     return errorResponse('Failed to save webhook config', 500);
   }
 });
+
+app.options('/api/pluggy/test-webhook', (c) => preflightResponse(c.req.header('Origin'), ['POST', 'OPTIONS']));
 
 app.post('/api/pluggy/test-webhook', authMiddleware, async (c) => {
   const userId = getUserId(c);
