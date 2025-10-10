@@ -121,14 +121,14 @@ function shouldRetryWithFallback(response: Response, attemptedUrl: string, metho
     return false;
   }
 
+  if (response.status === 404 || response.status === 405) {
+    return true;
+  }
+
   const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
 
   if (!contentType.includes('text/html')) {
     return false;
-  }
-
-  if (response.status === 404 || response.status === 405) {
-    return true;
   }
 
   if (resolvedUrl.includes('/api/')) {
