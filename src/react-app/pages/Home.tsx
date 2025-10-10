@@ -1,17 +1,23 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useUser } from '@clerk/clerk-react';
 import {
   Bell,
-  Briefcase,
-  CalendarClock,
+  ChevronLeft,
+  ChevronRight,
   CreditCard,
   HomeIcon,
-  Receipt,
+  LineChart,
+  ListTodo,
+  Mail,
+  PieChart,
+  Plus,
   RefreshCw,
-  Settings,
+  ShieldCheck,
   TrendingUp,
-  Wallet2,
+  UserCircle,
+  Wallet,
   Zap,
+  type LucideIcon,
 } from 'lucide-react';
 import AuthButton from '@/react-app/components/AuthButton';
 import ExperienceOverlay from '@/react-app/components/layout/ExperienceOverlay';
@@ -59,6 +65,9 @@ export default function Home() {
   const [financeSummaryLoading, setFinanceSummaryLoading] = useState(true);
   const [openFinanceSummary, setOpenFinanceSummary] = useState<OpenFinanceSummary | null>(null);
   const [creditCardSummary, setCreditCardSummary] = useState<CreditCardSummary | null>(null);
+  const [activePrimaryView, setActivePrimaryView] = useState<'home' | 'reports'>('home');
+  const [reportMonthOffset, setReportMonthOffset] = useState(0);
+  const [reportTab, setReportTab] = useState<'general' | 'card' | 'account' | 'category'>('general');
 
   const userName = useMemo(() => {
     if (!user) {
@@ -81,10 +90,9 @@ export default function Home() {
     return userName.split(' ')[0];
   }, [userName]);
 
-  const { expenses, submitting, metrics, addExpense } = useExpenses({
+  const { expenses, submitting, addExpense } = useExpenses({
     enabled: Boolean(user && isSignedIn && isOnline),
   });
-  const { totalExpenses, thisMonthExpenses, avgDailySpending } = metrics;
 
   useEffect(() => {
     if (!isSignedIn || !isOnline) {
@@ -303,549 +311,1009 @@ export default function Home() {
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
   );
 
-  const dailyAverage = Number.isFinite(avgDailySpending) ? avgDailySpending : 0;
+  const today = new Date();
+  const upcomingExpenses = sortedExpenses.filter(
+    expense => new Date(expense.date).getTime() >= today.getTime()
+  );
+  const paidExpenses = sortedExpenses.filter(
+    expense => new Date(expense.date).getTime() < today.getTime()
+  );
 
-  const summaryCards = [
+  const totalUpcoming = upcomingExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const paidExpensesTotal = paidExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const openFinanceBalance = openFinanceSummary?.totalBalance ?? 0;
+  const estimatedRevenue = Math.max(openFinanceBalance + paidExpensesTotal, 0);
+
+  const recentExpenses = sortedExpenses.slice(0, 5);
+
+  const homeSummaryCards = [
     {
-      id: 'expense-tracker' as const,
-      label: 'Despesas do mês',
-      value: formatCurrency(thisMonthExpenses),
-      helper: 'Atualize seus lançamentos',
+      id: 'to-pay' as const,
+      label: 'A pagar',
+      value: formatCurrency(totalUpcoming),
+      helper:
+        upcomingExpenses.length > 0
+          ? `${upcomingExpenses.length} compromissos`
+          : 'Sem compromissos para este mês',
+      action: () => {
+        setActivePrimaryView('reports');
+        setReportTab('general');
+      },
     },
     {
-      id: 'analytics' as const,
-      label: 'Gastos totais acompanhados',
-      value: formatCurrency(totalExpenses),
-      helper: 'Veja relatórios completos',
+      id: 'income' as const,
+      label: 'Receita',
+      value: formatCurrency(estimatedRevenue),
+      helper: openFinanceSummary
+        ? `${openFinanceSummary.totalAccounts} contas conectadas`
+        : 'Conecte contas para projeções',
+      action: () => handleOpenOverlay('banking'),
     },
     {
-      id: 'dashboard' as const,
-      label: 'Média diária',
-      value: formatCurrency(dailyAverage),
-      helper: 'Acompanhe metas no painel completo',
+      id: 'paid' as const,
+      label: 'Despesas pagas',
+      value: formatCurrency(paidExpensesTotal),
+      helper:
+        sortedExpenses.length > 0
+          ? `${sortedExpenses.length} lançamentos`
+          : 'Nenhum lançamento registrado',
+      action: () => handleOpenOverlay('transactions'),
+    },
+    {
+      id: 'balance' as const,
+      label: 'Saldo atual',
+      value: formatCurrency(openFinanceBalance),
+      helper: openFinanceSummary
+        ? `${openFinanceSummary.institutions.length} instituições vinculadas`
+        : 'Sincronize pelo Open Finance',
+      action: () => handleOpenOverlay('accounts'),
     },
   ];
 
-  const recentExpenses = sortedExpenses.slice(0, 5);
-  const upcomingItems = sortedExpenses.filter(expense => new Date(expense.date) >= new Date()).slice(0, 4);
+  const reportMonthDate = new Date(
+    today.getFullYear(),
+    today.getMonth() + reportMonthOffset,
+    1
+  );
+  const reportMonthExpenses = sortedExpenses.filter(expense => {
+    const expenseDate = new Date(expense.date);
+    return (
+      expenseDate.getFullYear() === reportMonthDate.getFullYear() &&
+      expenseDate.getMonth() === reportMonthDate.getMonth()
+    );
+  });
+  const reportMonthTotal = reportMonthExpenses.reduce(
+    (sum, expense) => sum + expense.amount,
+    0
+  );
 
-  return (
-    <div className="flex min-h-screen bg-slate-50 text-slate-900">
-      <aside className="hidden min-h-screen w-72 flex-col border-r border-slate-200/80 bg-white/70 px-6 py-10 backdrop-blur-xl lg:flex">
-        <div className="mb-10 flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500 to-blue-600 text-white shadow-lg">
-            <Wallet2 className="h-5 w-5" />
-          </div>
-          <div>
-            <p className="text-lg font-semibold text-slate-900">contable</p>
-            <p className="text-xs uppercase tracking-[0.35em] text-slate-500">finance hub</p>
+  const categoryMap = new Map<string, number>();
+  for (const expense of reportMonthExpenses) {
+    categoryMap.set(expense.category, (categoryMap.get(expense.category) ?? 0) + expense.amount);
+  }
+
+  const categorySummary = Array.from(categoryMap.entries())
+    .map(([category, value]) => ({
+      category,
+      value,
+      percentage: reportMonthTotal > 0 ? (value / reportMonthTotal) * 100 : 0,
+    }))
+    .sort((a, b) => b.value - a.value);
+
+  const monthLabelRaw = reportMonthDate
+    .toLocaleString('pt-BR', { month: 'short' })
+    .replace('.', '');
+  const reportMonthLabel = `${monthLabelRaw.charAt(0).toUpperCase()}${monthLabelRaw.slice(1)} ${reportMonthDate.getFullYear()}`;
+
+  const monthSegmentOptions = [-1, 0, 1].map(delta => {
+    const date = new Date(
+      reportMonthDate.getFullYear(),
+      reportMonthDate.getMonth() + delta,
+      1
+    );
+    const labelRaw = date.toLocaleString('pt-BR', { month: 'short' }).replace('.', '');
+    return {
+      offset: reportMonthOffset + delta,
+      label: `${labelRaw.charAt(0).toUpperCase()}${labelRaw.slice(1)}`,
+    };
+  });
+
+  const reportTabsConfig = [
+    { id: 'general' as const, label: 'Geral', icon: ListTodo },
+    { id: 'card' as const, label: 'Cartão', icon: CreditCard },
+    { id: 'account' as const, label: 'Conta', icon: Wallet },
+    { id: 'category' as const, label: 'Categoria', icon: PieChart },
+  ] as const;
+
+  let reportContent: ReactNode;
+
+  if (reportTab === 'general') {
+    if (reportMonthExpenses.length === 0) {
+      reportContent = (
+        <div className="rounded-3xl border border-dashed border-emerald-200 bg-emerald-50/50 p-6 text-center text-sm text-emerald-700">
+          <p className="text-base font-semibold">Ainda sem lançamento?</p>
+          <p className="mt-2 text-emerald-600">
+            Cadastre um novo lançamento clicando em adicionar logo abaixo no menu.
+          </p>
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleOpenOverlay('expense-tracker')}
+              className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold text-white shadow transition hover:bg-emerald-600"
+            >
+              <Plus className="h-4 w-4" />
+              Adicionar manualmente
+            </button>
+            <button
+              type="button"
+              onClick={() => handleOpenOverlay('banking')}
+              className="inline-flex items-center gap-2 rounded-full border border-emerald-200 px-4 py-2 text-xs font-semibold text-emerald-600 transition hover:bg-emerald-50"
+            >
+              <Zap className="h-4 w-4" />
+              Conectar Open Finance
+            </button>
           </div>
         </div>
+      );
+    } else {
+      reportContent = (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+            <span>Total do mês</span>
+            <span>{formatCurrency(reportMonthTotal)}</span>
+          </div>
+          {reportMonthExpenses.slice(0, 6).map(expense => (
+            <div
+              key={expense.id}
+              className="flex items-center justify-between rounded-3xl border border-slate-100 bg-white px-4 py-3 shadow-sm"
+            >
+              <div>
+                <p className="text-sm font-semibold text-slate-900">{expense.description}</p>
+                <p className="text-xs text-slate-500">
+                  {formatDate(expense.date)} · {expense.category}
+                </p>
+              </div>
+              <p className="text-sm font-semibold text-emerald-600">
+                {formatCurrency(expense.amount)}
+              </p>
+            </div>
+          ))}
+          {reportMonthExpenses.length > 6 && (
+            <p className="text-xs text-slate-500">
+              +{reportMonthExpenses.length - 6} lançamentos adicionais neste mês
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => handleOpenOverlay('transactions')}
+              className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-emerald-200 hover:text-emerald-600"
+            >
+              Ver histórico completo
+            </button>
+            <button
+              type="button"
+              onClick={() => handleOpenOverlay('expense-tracker')}
+              className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-emerald-200 hover:text-emerald-600"
+            >
+              Registrar novo lançamento
+            </button>
+          </div>
+        </div>
+      );
+    }
+  } else if (reportTab === 'card') {
+    if (creditCardSummary && creditCardSummary.totalCards > 0) {
+      reportContent = (
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-3xl border border-indigo-100 bg-indigo-50/80 p-4 text-xs text-indigo-700">
+              <p className="text-[0.7rem] font-semibold uppercase tracking-[0.3em]">
+                Limite disponível
+              </p>
+              <p className="mt-2 text-xl font-semibold text-slate-900">
+                {formatCurrency(creditCardSummary.availableCredit)}
+              </p>
+              <p className="text-xs text-indigo-600">
+                Total cadastrado {formatCurrency(creditCardSummary.totalLimit)}
+              </p>
+            </div>
+            <div className="rounded-3xl border border-indigo-100 bg-white p-4 text-xs text-slate-600">
+              <p className="text-[0.7rem] font-semibold uppercase tracking-[0.3em] text-indigo-500">
+                Uso atual
+              </p>
+              <p className="mt-2 text-xl font-semibold text-slate-900">
+                {formatCurrency(creditCardSummary.usedLimit)}
+              </p>
+              <div className="mt-3 h-2 w-full rounded-full bg-slate-200">
+                <div
+                  className="h-2 rounded-full bg-gradient-to-r from-violet-500 via-sky-500 to-indigo-600"
+                  style={{
+                    width: `${creditCardSummary.totalLimit > 0
+                      ? Math.min(
+                          (creditCardSummary.usedLimit / creditCardSummary.totalLimit) * 100,
+                          100
+                        )
+                      : 0}%`,
+                  }}
+                />
+              </div>
+              {nextDueDateLabel && (
+                <p className="mt-2 text-xs text-slate-500">
+                  Próxima fatura prevista para {nextDueDateLabel}
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="space-y-3">
+            {creditCardsPreview.map(card => (
+              <div key={card.id} className="rounded-3xl border border-slate-100 bg-slate-50 px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">{card.name}</p>
+                    <p className="text-xs text-slate-500">Fatura no dia {card.dueDay}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-slate-900">
+                      {formatCurrency(card.balance)}
+                    </p>
+                    <p className="text-xs text-slate-500">de {formatCurrency(card.limit)}</p>
+                  </div>
+                </div>
+                <div className="mt-3 h-1.5 w-full rounded-full bg-slate-200">
+                  <div
+                    className="h-1.5 rounded-full bg-gradient-to-r from-violet-500 to-indigo-600"
+                    style={{ width: `${Math.min(card.utilization, 100)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+            {creditCardSummary.totalCards > creditCardsPreview.length && (
+              <p className="text-xs text-slate-500">
+                +{creditCardSummary.totalCards - creditCardsPreview.length} cartões adicionais cadastrados
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => handleOpenOverlay('credit-cards')}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-indigo-200 hover:text-indigo-600"
+          >
+            Gerenciar cartões
+          </button>
+        </div>
+      );
+    } else {
+      reportContent = (
+        <div className="rounded-3xl border border-dashed border-indigo-200 bg-indigo-50/50 p-6 text-center text-sm text-indigo-600">
+          <p className="text-base font-semibold">Nenhum cartão cadastrado.</p>
+          <p className="mt-2">
+            Adicione seus cartões para acompanhar limites e faturas automaticamente.
+          </p>
+          <div className="mt-4 flex justify-center">
+            <button
+              type="button"
+              onClick={() => handleOpenOverlay('credit-cards')}
+              className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow transition hover:from-violet-600 hover:to-indigo-700"
+            >
+              <CreditCard className="h-4 w-4" />
+              Adicionar cartão
+            </button>
+          </div>
+        </div>
+      );
+    }
+  } else if (reportTab === 'account') {
+    if (openFinanceSummary) {
+      reportContent = (
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-3xl border border-emerald-100 bg-emerald-50/80 p-4 text-xs text-emerald-700">
+              <p className="text-[0.7rem] font-semibold uppercase tracking-[0.3em]">
+                Saldo consolidado
+              </p>
+              <p className="mt-2 text-xl font-semibold text-slate-900">
+                {formatCurrency(openFinanceSummary.totalBalance)}
+              </p>
+              <p className="text-xs text-emerald-600">
+                {openFinanceSummary.totalAccounts} contas conectadas
+              </p>
+            </div>
+            <div className="rounded-3xl border border-emerald-100 bg-white p-4 text-sm text-slate-600">
+              <p>
+                Sincronizações automáticas:{' '}
+                <span className="font-semibold text-slate-900">
+                  {openFinanceSummary.autoSyncEnabled}
+                </span>
+              </p>
+              <p className="mt-1">
+                Conexões Open Finance:{' '}
+                <span className="font-semibold text-slate-900">
+                  {openFinanceSummary.pluggyConnections}
+                </span>
+              </p>
+              <p className="mt-2 text-xs text-slate-500">{openFinanceLastSyncLabel}</p>
+            </div>
+          </div>
+          {openFinanceSummary.institutions.length > 0 && (
+            <div className="flex flex-wrap gap-2 text-xs text-slate-600">
+              {openFinanceSummary.institutions.slice(0, 6).map(institution => (
+                <span
+                  key={institution}
+                  className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1"
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                  {institution}
+                </span>
+              ))}
+              {openFinanceSummary.institutions.length > 6 && (
+                <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1">
+                  +{openFinanceSummary.institutions.length - 6}
+                </span>
+              )}
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => handleOpenOverlay('accounts')}
+              className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-emerald-200 hover:text-emerald-600"
+            >
+              Gerenciar contas
+            </button>
+            <button
+              type="button"
+              onClick={() => handleOpenOverlay('banking')}
+              className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-emerald-200 hover:text-emerald-600"
+            >
+              Sincronizar Open Finance
+            </button>
+          </div>
+        </div>
+      );
+    } else {
+      reportContent = (
+        <div className="rounded-3xl border border-dashed border-emerald-200 bg-emerald-50/50 p-6 text-center text-sm text-emerald-600">
+          <p className="text-base font-semibold">Nenhuma conta conectada.</p>
+          <p className="mt-2">
+            Conecte suas instituições financeiras pelo Open Finance para acompanhar saldos automaticamente.
+          </p>
+          <div className="mt-4 flex justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleOpenOverlay('banking')}
+              className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold text-white shadow transition hover:bg-emerald-600"
+            >
+              <Zap className="h-4 w-4" />
+              Iniciar conexão
+            </button>
+            <button
+              type="button"
+              onClick={() => handleOpenOverlay('accounts')}
+              className="inline-flex items-center gap-2 rounded-full border border-emerald-200 px-4 py-2 text-xs font-semibold text-emerald-600 transition hover:bg-emerald-50"
+            >
+              Cadastro manual
+            </button>
+          </div>
+        </div>
+      );
+    }
+  } else {
+    if (categorySummary.length > 0) {
+      reportContent = (
+        <div className="space-y-4">
+          {categorySummary.map(item => (
+            <div key={item.category} className="rounded-3xl border border-slate-100 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-slate-900">{item.category}</p>
+                <p className="text-sm font-semibold text-slate-900">
+                  {formatCurrency(item.value)}
+                </p>
+              </div>
+              <div className="mt-2 h-2 w-full rounded-full bg-slate-200">
+                <div
+                  className="h-2 rounded-full bg-gradient-to-r from-emerald-500 via-sky-500 to-indigo-600"
+                  style={{ width: `${Math.min(item.percentage, 100)}%` }}
+                />
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                {item.percentage.toFixed(1)}% dos lançamentos do mês
+              </p>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => handleOpenOverlay('analytics')}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-emerald-200 hover:text-emerald-600"
+          >
+            Explorar gráficos completos
+          </button>
+        </div>
+      );
+    } else {
+      reportContent = (
+        <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-600">
+          <p className="text-base font-semibold">Ainda sem categorias ativas.</p>
+          <p className="mt-2">Adicione lançamentos para visualizar a distribuição por categoria.</p>
+          <div className="mt-4 flex justify-center">
+            <button
+              type="button"
+              onClick={() => handleOpenOverlay('expense-tracker')}
+              className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold text-white shadow transition hover:bg-emerald-600"
+            >
+              <Plus className="h-4 w-4" />
+              Adicionar lançamento
+            </button>
+          </div>
+        </div>
+      );
+    }
+  }
 
-        <nav className="flex flex-1 flex-col gap-2 text-sm font-medium text-slate-600">
+  const homeView = (
+    <>
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-semibold text-emerald-600">
+            {firstName ? `Olá, ${firstName}!` : 'Bem-vindo!'}
+          </p>
+          <h1 className="mt-1 text-2xl font-semibold text-slate-900">
+            Controle total do seu financeiro.
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Cadastre lançamentos, acompanhe cartões e conecte suas contas em minutos.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => handleOpenOverlay('dashboard')}
-            className="flex items-center gap-3 rounded-2xl bg-gradient-to-r from-sky-500/10 to-blue-600/10 px-4 py-3 text-left text-slate-900 shadow-sm shadow-sky-100 transition hover:from-sky-500/20 hover:to-blue-600/20"
+            onClick={handleRefreshFinanceSummary}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-100 bg-white text-emerald-600 shadow-sm transition hover:border-emerald-200 hover:text-emerald-700"
           >
-            <HomeIcon className="h-4 w-4 text-sky-600" />
-            Visão geral
+            <RefreshCw className="h-4 w-4" />
           </button>
           <button
             type="button"
-            onClick={() => handleOpenOverlay('transactions')}
-            className="flex items-center gap-3 rounded-2xl px-4 py-3 transition hover:bg-slate-100"
+            onClick={() => setActivePrimaryView('reports')}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-100 bg-white text-emerald-600 shadow-sm transition hover:border-emerald-200 hover:text-emerald-700"
           >
-            <Receipt className="h-4 w-4 text-sky-500" />
-            Transações
+            <Bell className="h-4 w-4" />
           </button>
+          <AuthButton />
+        </div>
+      </header>
+
+      <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-500 to-emerald-600 p-6 text-white shadow-lg">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-white/70">
+              Seu próximo passo
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold">Centralize suas contas em poucos cliques</h2>
+            <p className="mt-2 max-w-sm text-sm text-white/80">
+              Vincule seus bancos, organize lançamentos e receba alertas personalizados.
+            </p>
+          </div>
+          <TrendingUp className="hidden h-16 w-16 text-white/60 sm:block" />
+        </div>
+        <div className="mt-5 flex flex-wrap gap-3">
           <button
             type="button"
             onClick={() => handleOpenOverlay('accounts')}
-            className="flex items-center gap-3 rounded-2xl px-4 py-3 transition hover:bg-slate-100"
+            className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-emerald-600 shadow transition hover:bg-emerald-50"
           >
-            <Briefcase className="h-4 w-4 text-sky-500" />
-            Contas conectadas
+            <Mail className="h-4 w-4" />
+            Vincular e-mail à conta
           </button>
           <button
             type="button"
             onClick={() => handleOpenOverlay('banking')}
-            className="flex items-center gap-3 rounded-2xl px-4 py-3 transition hover:bg-slate-100"
+            className="inline-flex items-center gap-2 rounded-full border border-white/50 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/20"
           >
-            <Zap className="h-4 w-4 text-sky-500" />
-            Open Finance
+            <Zap className="h-4 w-4" />
+            Conectar Open Finance
           </button>
+        </div>
+      </section>
+
+      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {homeSummaryCards.map(card => (
+          <button
+            key={card.id}
+            type="button"
+            onClick={card.action}
+            className="group flex flex-col gap-2 rounded-3xl bg-white p-4 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
+          >
+            <span className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-500">
+              {card.label}
+            </span>
+            <span className="text-2xl font-semibold text-slate-900">{card.value}</span>
+            <span className="text-xs text-slate-500">{card.helper}</span>
+          </button>
+        ))}
+      </section>
+
+      <section className="overflow-hidden rounded-3xl bg-white p-6 shadow-sm">
+        <div className="flex items-start gap-4">
+          <div className="rounded-2xl bg-emerald-100 p-3 text-emerald-600">
+            <ShieldCheck className="h-6 w-6" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-500">
+              Administre Pro
+            </p>
+            <h2 className="mt-2 text-lg font-semibold text-slate-900">
+              Assine o Premium por R$ 29,90/mensal
+            </h2>
+            <p className="mt-2 text-sm text-slate-500">
+              Desbloqueie dashboards avançados, previsões e relatórios automáticos para o seu negócio.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-500">
+              <span className="rounded-full bg-slate-100 px-3 py-1">Painéis dinâmicos</span>
+              <span className="rounded-full bg-slate-100 px-3 py-1">Alertas inteligentes</span>
+              <span className="rounded-full bg-slate-100 px-3 py-1">Exportação de dados</span>
+            </div>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => handleOpenOverlay('analytics')}
+          className="mt-6 inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-emerald-600"
+        >
+          Conhecer planos
+        </button>
+      </section>
+
+      <section className="rounded-3xl bg-white p-6 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Meus cartões</h2>
+            <p className="text-sm text-slate-500">
+              Controle limites, faturas e vínculos em tempo real.
+            </p>
+          </div>
           <button
             type="button"
             onClick={() => handleOpenOverlay('credit-cards')}
-            className="flex items-center gap-3 rounded-2xl px-4 py-3 transition hover:bg-slate-100"
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-emerald-200 hover:text-emerald-600"
           >
-            <CreditCard className="h-4 w-4 text-sky-500" />
-            Cartões de crédito
-          </button>
-          <button
-            type="button"
-            onClick={() => handleOpenOverlay('analytics')}
-            className="flex items-center gap-3 rounded-2xl px-4 py-3 transition hover:bg-slate-100"
-          >
-            <TrendingUp className="h-4 w-4 text-sky-500" />
-            Relatórios
-          </button>
-          <button
-            type="button"
-            onClick={() => handleOpenOverlay('notifications')}
-            className="flex items-center gap-3 rounded-2xl px-4 py-3 transition hover:bg-slate-100"
-          >
-            <Bell className="h-4 w-4 text-sky-500" />
-            Alertas
-          </button>
-          <button
-            type="button"
-            onClick={() => handleOpenOverlay('quick-actions')}
-            className="flex items-center gap-3 rounded-2xl px-4 py-3 transition hover:bg-slate-100"
-          >
-            <CalendarClock className="h-4 w-4 text-sky-500" />
-            Ações rápidas
-          </button>
-        </nav>
-
-        <div className="mt-8 rounded-3xl border border-slate-200 bg-slate-50/80 p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">Sincronização</p>
-          <p className="mt-3 text-sm text-slate-600">
-            Atualize saldos conectados e mantenha contas e cartões sempre alinhados.
-          </p>
-          <button
-            type="button"
-            onClick={handleRefreshFinanceSummary}
-            className="mt-5 flex items-center gap-2 rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-sky-200 transition hover:shadow-xl"
-          >
-            Atualizar conexões
+            Gerenciar
           </button>
         </div>
-      </aside>
-
-      <main className="relative flex flex-1 flex-col">
-        <div className="absolute inset-x-0 top-0 -z-10 h-72 bg-gradient-to-br from-sky-100 via-white to-transparent" aria-hidden="true" />
-        <div className="flex flex-1 flex-col gap-12 px-4 pb-16 pt-12 sm:px-8 lg:px-12">
-          <header className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-sky-600">Plataforma contable</p>
-              <h1 className="mt-3 text-3xl font-semibold text-slate-900">
-                Olá{firstName ? `, ${firstName}` : ''}! Este é o seu hub financeiro.
-              </h1>
-              <p className="mt-2 max-w-xl text-sm text-slate-600">
-                Acompanhe saldos, despesas, obrigações e receba a orientação inteligente da plataforma em uma única interface.
-              </p>
+        <div className="mt-5 space-y-3">
+          {financeSummaryLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map(item => (
+                <div key={item} className="h-16 animate-pulse rounded-3xl bg-slate-100" />
+              ))}
             </div>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={handleRefreshFinanceSummary}
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-sky-200 hover:text-sky-600"
-            >
-              Atualizar painel
-            </button>
-              <AuthButton />
-            </div>
-          </header>
-
-          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {summaryCards.map(card => (
-              <button
-                key={card.id}
-                type="button"
-                onClick={() => handleOpenOverlay(card.id)}
-                className="group flex flex-col items-start gap-2 rounded-3xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-1 hover:border-sky-200 hover:shadow-xl"
-              >
-                <span className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">{card.label}</span>
-                <span className="text-3xl font-semibold text-slate-900">{card.value}</span>
-                <span className="text-xs text-slate-500">{card.helper}</span>
-              </button>
-            ))}
-          </section>
-
-          <section className="grid gap-8 lg:grid-cols-[1.4fr_1fr]">
-            <div className="flex flex-col gap-6 rounded-4xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold text-slate-900">Fluxo de caixa</h2>
-                  <p className="text-sm text-slate-500">Monitoramento semanal dos seus lançamentos mais recentes.</p>
+          ) : creditCardSummary && creditCardSummary.totalCards > 0 ? (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-3xl border border-indigo-100 bg-indigo-50/70 p-4 text-xs text-indigo-700">
+                  <p className="text-[0.7rem] font-semibold uppercase tracking-[0.3em]">
+                    Limite disponível
+                  </p>
+                  <p className="mt-2 text-xl font-semibold text-slate-900">
+                    {formatCurrency(creditCardSummary.availableCredit)}
+                  </p>
+                  <p className="text-xs text-indigo-600">
+                    Total cadastrado {formatCurrency(creditCardSummary.totalLimit)}
+                  </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleOpenOverlay('analytics')}
-                  className="rounded-2xl border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 transition hover:border-sky-200 hover:text-sky-600"
-                >
-                  Ver detalhado
-                </button>
-              </div>
-              <div className="h-56 rounded-3xl bg-gradient-to-r from-sky-500/10 via-white to-blue-600/10 p-6">
-                <div className="flex h-full flex-col justify-between">
-                  <div className="grid grid-cols-7 gap-2 text-xs text-slate-500">
-                    {['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'].map(day => (
-                      <span key={day} className="uppercase tracking-[0.3em]">
-                        {day}
-                      </span>
-                    ))}
+                <div className="rounded-3xl border border-indigo-100 bg-white p-4 text-xs text-slate-600">
+                  <p className="text-[0.7rem] font-semibold uppercase tracking-[0.3em] text-indigo-500">
+                    Uso atual
+                  </p>
+                  <p className="mt-2 text-xl font-semibold text-slate-900">
+                    {formatCurrency(creditCardSummary.usedLimit)}
+                  </p>
+                  <div className="mt-3 h-2 w-full rounded-full bg-slate-200">
+                    <div
+                      className="h-2 rounded-full bg-gradient-to-r from-violet-500 via-sky-500 to-indigo-600"
+                      style={{
+                        width: `${creditCardSummary.totalLimit > 0
+                          ? Math.min(
+                              (creditCardSummary.usedLimit / creditCardSummary.totalLimit) * 100,
+                              100
+                            )
+                          : 0}%`,
+                      }}
+                    />
                   </div>
-                  <div className="flex flex-1 items-end gap-3 self-end">
-                    {[12, 24, 18, 32, 22, 14, 19].map((value, index) => (
-                      <div key={index} className="flex h-full w-8 flex-col justify-end">
-                        <div className="mx-auto w-8 rounded-full bg-gradient-to-t from-sky-500 to-blue-600" style={{ height: `${value * 3}px` }} />
-                      </div>
-                    ))}
-                  </div>
+                  {nextDueDateLabel && (
+                    <p className="mt-2 text-xs text-slate-500">
+                      Próxima fatura prevista para {nextDueDateLabel}
+                    </p>
+                  )}
                 </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-6 rounded-4xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">Agenda financeira</h2>
-                <p className="text-sm text-slate-500">Próximos compromissos e despesas previstas.</p>
-              </div>
-              <div className="space-y-4">
-                {upcomingItems.length === 0 && (
-                  <div className="rounded-3xl border border-dashed border-slate-200 p-5 text-center text-sm text-slate-500">
-                    Cadastre despesas com data prevista para montar sua agenda.
-                  </div>
-                )}
-                {upcomingItems.map(item => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => handleOpenOverlay('transactions')}
-                    className="flex w-full items-center justify-between gap-3 rounded-3xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-left transition hover:border-sky-200 hover:bg-sky-50"
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-slate-700">{item.description}</p>
-                      <p className="text-xs text-slate-500">{formatDate(item.date)}</p>
-                    </div>
-                    <span className="text-sm font-semibold text-slate-900">{formatCurrency(item.amount)}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          <section className="grid gap-8 lg:grid-cols-[1fr_0.9fr]">
-            <div className="flex flex-col gap-6 rounded-4xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold text-slate-900">Movimentações recentes</h2>
-                  <p className="text-sm text-slate-500">Resumo das últimas despesas registradas.</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleOpenOverlay('expense-tracker')}
-                  className="rounded-2xl border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 transition hover:border-sky-200 hover:text-sky-600"
-                >
-                  Registrar gasto
-                </button>
               </div>
               <div className="space-y-3">
-                {recentExpenses.length === 0 && (
-                  <div className="rounded-3xl border border-dashed border-slate-200 p-5 text-center text-sm text-slate-500">
-                    Nenhuma movimentação registrada até o momento.
-                  </div>
-                )}
-                {recentExpenses.map(expense => (
-                  <div
-                    key={expense.id}
-                    className="flex items-center justify-between gap-4 rounded-3xl border border-slate-100 bg-slate-50 px-4 py-3"
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-slate-700">{expense.description}</p>
-                      <p className="text-xs text-slate-500">
-                        {expense.category} • {formatDate(expense.date)}
-                      </p>
+                {creditCardsPreview.map(card => (
+                  <div key={card.id} className="rounded-3xl border border-slate-100 bg-slate-50 px-4 py-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{card.name}</p>
+                        <p className="text-xs text-slate-500">Fatura no dia {card.dueDay}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-slate-900">
+                          {formatCurrency(card.balance)}
+                        </p>
+                        <p className="text-xs text-slate-500">de {formatCurrency(card.limit)}</p>
+                      </div>
                     </div>
-                    <span className="text-sm font-semibold text-rose-500">-{formatCurrency(expense.amount)}</span>
+                    <div className="mt-3 h-1.5 w-full rounded-full bg-slate-200">
+                      <div
+                        className="h-1.5 rounded-full bg-gradient-to-r from-violet-500 to-indigo-600"
+                        style={{ width: `${Math.min(card.utilization, 100)}%` }}
+                      />
+                    </div>
                   </div>
                 ))}
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-6 rounded-4xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">Assistente contable</h2>
-                <p className="text-sm text-slate-500">
-                  Sugestões de rotina e atalhos que mantêm suas finanças organizadas diariamente.
-                </p>
-              </div>
-              <div className="space-y-4 text-sm text-slate-600">
-                <div className="rounded-3xl bg-gradient-to-br from-sky-500/10 via-white to-blue-500/10 p-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.35em] text-sky-600">Sugerido agora</p>
-                  <p className="mt-3 text-sm text-slate-700">
-                    Revise a categoria com maior crescimento neste mês e abra os relatórios para comparar períodos.
+                {creditCardSummary.totalCards > creditCardsPreview.length && (
+                  <p className="text-xs text-slate-500">
+                    +{creditCardSummary.totalCards - creditCardsPreview.length} cartões cadastrados
                   </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleOpenOverlay('analytics')}
-                  className="flex items-center justify-between gap-3 rounded-3xl border border-slate-200 bg-slate-50/90 px-4 py-3 text-left transition hover:border-sky-200 hover:bg-sky-50"
-                >
-                  <span className="text-sm font-medium text-slate-700">Ver relatórios completos</span>
-                  <span className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">detalhes</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleOpenOverlay('quick-actions')}
-                  className="flex items-center justify-between gap-3 rounded-3xl border border-slate-200 bg-slate-50/90 px-4 py-3 text-left transition hover:border-sky-200 hover:bg-sky-50"
-                >
-                  <span className="text-sm font-medium text-slate-700">Executar ação rápida</span>
-                  <Settings className="h-4 w-4 text-sky-500" />
-                </button>
+                )}
               </div>
-            </div>
-          </section>
-
-          <section className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="flex flex-col gap-6 rounded-4xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold text-slate-900">Integrações Open Finance</h2>
-                  <p className="text-sm text-slate-500">
-                    Conecte instituições, acompanhe saldos e mantenha suas contas atualizadas automaticamente.
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleRefreshFinanceSummary}
-                    className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-700 transition hover:border-sky-200 hover:text-sky-600"
-                  >
-                    <RefreshCw className={`h-4 w-4 ${financeSummaryLoading ? 'animate-spin' : ''}`} />
-                    Atualizar dados
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleOpenOverlay('banking')}
-                    className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-lg transition hover:from-sky-600 hover:to-blue-700"
-                  >
-                    <Zap className="h-4 w-4" />
-                    Gerenciar conexões
-                  </button>
-                </div>
-              </div>
-
-              {financeSummaryLoading ? (
-                <div className="space-y-3">
-                  {[1, 2, 3].map(item => (
-                    <div key={item} className="h-20 animate-pulse rounded-3xl bg-slate-100" />
-                  ))}
-                </div>
-              ) : openFinanceSummary && openFinanceSummary.totalAccounts > 0 ? (
-                <>
-                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                    <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
-                        Contas monitoradas
-                      </p>
-                      <p className="mt-2 text-2xl font-semibold text-slate-900">{openFinanceSummary.totalAccounts}</p>
-                      <p className="text-xs text-slate-500">
-                        {openFinanceSummary.autoSyncEnabled} com sincronização automática
-                      </p>
-                    </div>
-                    <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">
-                        Instituições conectadas
-                      </p>
-                      <p className="mt-2 text-2xl font-semibold text-slate-900">{openFinanceSummary.pluggyConnections}</p>
-                      <p className="text-xs text-slate-500">Infraestrutura Open Finance Pluggy</p>
-                    </div>
-                    <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">Saldo consolidado</p>
-                      <p className="mt-2 text-2xl font-semibold text-slate-900">
-                        {formatCurrency(openFinanceSummary.totalBalance)}
-                      </p>
-                      <p className="text-xs text-slate-500">Atualizado pelas contas conectadas</p>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    {openFinanceSummary.institutions.slice(0, 6).map(institution => (
-                      <span
-                        key={institution}
-                        className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600"
-                      >
-                        <span className="h-2 w-2 rounded-full bg-sky-500" aria-hidden="true" />
-                        {institution}
-                      </span>
-                    ))}
-                    {openFinanceSummary.institutions.length > 6 && (
-                      <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
-                        +{openFinanceSummary.institutions.length - 6} instituições
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex flex-col gap-3 rounded-3xl border border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-600">
-                    <p>{openFinanceLastSyncLabel}</p>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenOverlay('accounts')}
-                        className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-700 transition hover:border-sky-200 hover:text-sky-600"
-                      >
-                        Ver contas conectadas
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenOverlay('transactions')}
-                        className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-700 transition hover:border-sky-200 hover:text-sky-600"
-                      >
-                        Revisar transações importadas
-                      </button>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="rounded-3xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
-                  Conecte suas contas bancárias e cartões via Open Finance para acompanhar saldos em tempo real.
-                  <div className="mt-4 flex justify-center">
-                    <button
-                      type="button"
-                      onClick={() => handleOpenOverlay('banking')}
-                      className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-lg transition hover:from-sky-600 hover:to-blue-700"
-                    >
-                      <Zap className="h-4 w-4" />
-                      Iniciar conexão
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-col gap-6 rounded-4xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold text-slate-900">Cartões de crédito</h2>
-                  <p className="text-sm text-slate-500">
-                    Visualize limites, acompanhe faturas e mantenha o uso dos cartões sob controle.
-                  </p>
-                </div>
+            </>
+          ) : (
+            <div className="rounded-3xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
+              Você ainda não tem nenhum cartão cadastrado.
+              <div className="mt-4 flex justify-center">
                 <button
                   type="button"
                   onClick={() => handleOpenOverlay('credit-cards')}
-                  className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-lg transition hover:from-violet-600 hover:to-indigo-700"
+                  className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow transition hover:from-violet-600 hover:to-indigo-700"
                 >
                   <CreditCard className="h-4 w-4" />
-                  Gerenciar cartões
+                  Adicionar cartão
                 </button>
               </div>
+            </div>
+          )}
+        </div>
+      </section>
 
-              {financeSummaryLoading ? (
-                <div className="space-y-3">
-                  {[1, 2, 3].map(item => (
-                    <div key={item} className="h-20 animate-pulse rounded-3xl bg-slate-100" />
-                  ))}
+      <section className="rounded-3xl bg-white p-6 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Minhas contas</h2>
+            <p className="text-sm text-slate-500">
+              Saldos consolidados e sincronizações do Open Finance.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleRefreshFinanceSummary}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-emerald-200 hover:text-emerald-600"
+          >
+            Atualizar
+          </button>
+        </div>
+        <div className="mt-5 space-y-3 text-sm text-slate-600">
+          {openFinanceSummary ? (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-3xl border border-emerald-100 bg-emerald-50/80 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-600">
+                    Saldo total
+                  </p>
+                  <p className="mt-2 text-xl font-semibold text-slate-900">
+                    {formatCurrency(openFinanceSummary.totalBalance)}
+                  </p>
+                  <p className="text-xs text-emerald-600">
+                    {openFinanceSummary.totalAccounts} contas conectadas automaticamente
+                  </p>
                 </div>
-              ) : creditCardSummary && creditCardSummary.totalCards > 0 ? (
-                <>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="rounded-3xl border border-indigo-100 bg-indigo-50/80 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.35em] text-indigo-500">Limite disponível</p>
-                      <p className="mt-2 text-2xl font-semibold text-slate-900">
-                        {formatCurrency(creditCardSummary.availableCredit)}
-                      </p>
-                      <p className="text-xs text-indigo-500">
-                        Total: {formatCurrency(creditCardSummary.totalLimit)}
-                      </p>
-                    </div>
-                    <div className="rounded-3xl border border-indigo-100 bg-white p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.35em] text-indigo-500">Uso atual</p>
-                      <p className="mt-2 text-2xl font-semibold text-slate-900">
-                        {formatCurrency(creditCardSummary.usedLimit)}
-                      </p>
-                      <div className="mt-3 h-2 w-full rounded-full bg-slate-200">
-                        <div
-                          className="h-2 rounded-full bg-gradient-to-r from-violet-500 via-sky-500 to-indigo-600"
-                          style={{
-                            width: `${creditCardSummary.totalLimit > 0
-                              ? Math.min((creditCardSummary.usedLimit / creditCardSummary.totalLimit) * 100, 100)
-                              : 0}%`,
-                          }}
-                        />
-                      </div>
-                      <p className="mt-2 text-xs text-slate-500">
-                        {creditCardSummary.totalLimit > 0
-                          ? `${Math.round((creditCardSummary.usedLimit / creditCardSummary.totalLimit) * 100)}% do limite utilizado`
-                          : 'Cadastre seus limites para acompanhar o uso'}
-                      </p>
-                    </div>
-                  </div>
-
-                  {nextDueDateLabel && (
-                    <div className="rounded-3xl border border-indigo-100 bg-indigo-50/70 p-4 text-sm text-indigo-700">
-                      Próxima fatura prevista para <span className="font-semibold">{nextDueDateLabel}</span>
-                    </div>
-                  )}
-
-                  <div className="space-y-4">
-                    {creditCardsPreview.map(card => {
-                      const utilizationRounded = Math.round(card.utilization);
-                      const utilizationBarWidth = Math.min(card.utilization, 100);
-
-                      return (
-                        <button
-                          key={card.id}
-                          type="button"
-                          onClick={() => handleOpenOverlay('credit-cards')}
-                          className="w-full rounded-3xl border border-slate-200 bg-slate-50/80 px-4 py-4 text-left transition hover:border-indigo-200 hover:bg-indigo-50"
-                        >
-                          <div className="flex items-center justify-between gap-4">
-                            <div>
-                              <p className="text-sm font-medium text-slate-700">{card.name}</p>
-                              <p className="text-xs text-slate-500">Fatura no dia {card.dueDay}</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-sm font-semibold text-slate-900">{formatCurrency(card.balance)}</p>
-                              <p className="text-xs text-slate-500">de {formatCurrency(card.limit)}</p>
-                            </div>
-                          </div>
-                          <div className="mt-3 h-2 w-full rounded-full bg-slate-200">
-                            <div
-                              className={`h-2 rounded-full ${utilizationRounded > 90 ? 'bg-rose-500' : 'bg-gradient-to-r from-violet-500 to-indigo-600'}`}
-                              style={{ width: `${utilizationBarWidth}%` }}
-                            />
-                          </div>
-                          <p
-                            className={`mt-2 text-xs ${utilizationRounded > 100 ? 'text-rose-500' : 'text-slate-500'}`}
-                          >
-                            {utilizationRounded > 100
-                              ? 'Limite excedido'
-                              : `${utilizationRounded}% do limite utilizado`}
-                          </p>
-                        </button>
-                      );
-                    })}
-                    {creditCardSummary.totalCards > creditCardsPreview.length && (
-                      <p className="text-xs text-slate-500">
-                        +{creditCardSummary.totalCards - creditCardsPreview.length} cartões cadastrados
-                      </p>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <div className="rounded-3xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
-                  Cadastre seus cartões para acompanhar limites, faturas e benefícios em um único lugar.
-                  <div className="mt-4 flex justify-center">
-                    <button
-                      type="button"
-                      onClick={() => handleOpenOverlay('credit-cards')}
-                      className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-violet-500 to-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-lg transition hover:from-violet-600 hover:to-indigo-700"
+                <div className="rounded-3xl border border-emerald-100 bg-white p-4 text-xs text-slate-500">
+                  <p className="text-sm text-slate-600">
+                    Sincronizações automáticas ativadas:{' '}
+                    <span className="font-semibold text-slate-900">
+                      {openFinanceSummary.autoSyncEnabled}
+                    </span>
+                  </p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Conexões Pluggy:{' '}
+                    <span className="font-semibold text-slate-900">
+                      {openFinanceSummary.pluggyConnections}
+                    </span>
+                  </p>
+                  <p className="mt-2">{openFinanceLastSyncLabel}</p>
+                </div>
+              </div>
+              {openFinanceSummary.institutions.length > 0 && (
+                <div className="flex flex-wrap gap-2 text-xs">
+                  {openFinanceSummary.institutions.slice(0, 6).map(institution => (
+                    <span
+                      key={institution}
+                      className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-slate-600"
                     >
-                      <CreditCard className="h-4 w-4" />
-                      Adicionar cartão
-                    </button>
-                  </div>
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                      {institution}
+                    </span>
+                  ))}
+                  {openFinanceSummary.institutions.length > 6 && (
+                    <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-slate-600">
+                      +{openFinanceSummary.institutions.length - 6} instituições
+                    </span>
+                  )}
                 </div>
               )}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleOpenOverlay('accounts')}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-emerald-200 hover:text-emerald-600"
+                >
+                  Gerenciar contas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenOverlay('banking')}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-emerald-200 hover:text-emerald-600"
+                >
+                  Sincronizar Open Finance
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="rounded-3xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
+              Conecte suas contas bancárias para acompanhar saldos automaticamente.
+              <div className="mt-4 flex justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleOpenOverlay('banking')}
+                  className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold text-white shadow transition hover:bg-emerald-600"
+                >
+                  <Zap className="h-4 w-4" />
+                  Iniciar conexão
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenOverlay('accounts')}
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-emerald-200 hover:text-emerald-600"
+                >
+                  Cadastro manual
+                </button>
+              </div>
             </div>
-          </section>
+          )}
         </div>
+      </section>
+
+      <section className="mb-4 rounded-3xl bg-white p-6 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Transações recentes</h2>
+            <p className="text-sm text-slate-500">
+              Cadastre manualmente ou importe via Open Finance.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleOpenOverlay('transactions')}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-emerald-200 hover:text-emerald-600"
+          >
+            Ver todas
+          </button>
+        </div>
+        <div className="mt-5 space-y-3 text-sm">
+          {recentExpenses.length > 0 ? (
+            recentExpenses.map(expense => (
+              <div
+                key={expense.id}
+                className="flex items-center justify-between rounded-3xl border border-slate-100 bg-white px-4 py-3 shadow-sm"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">{expense.description}</p>
+                  <p className="text-xs text-slate-500">
+                    {formatDate(expense.date)} · {expense.category}
+                  </p>
+                </div>
+                <span className="text-sm font-semibold text-emerald-600">
+                  {formatCurrency(expense.amount)}
+                </span>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-3xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">
+              Ainda sem lançamento? Cadastre um novo lançamento clicando em adicionar logo abaixo no menu.
+            </div>
+          )}
+        </div>
+        <div className="mt-5 grid gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => handleOpenOverlay('expense-tracker')}
+            className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-emerald-600"
+          >
+            <Plus className="h-4 w-4" />
+            Adicionar manualmente
+          </button>
+          <button
+            type="button"
+            onClick={() => handleOpenOverlay('banking')}
+            className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-emerald-200 hover:text-emerald-600"
+          >
+            <Zap className="h-4 w-4" />
+            Importar pelo Open Finance
+          </button>
+        </div>
+      </section>
+    </>
+  );
+
+  const reportsView = (
+    <section className="mb-4 rounded-3xl bg-white p-6 shadow-sm">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-500">Relatório</p>
+          <h2 className="mt-2 text-2xl font-semibold text-slate-900">Relatório detalhado</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Acompanhe seus lançamentos por mês e visualize insights personalizados.
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-2">
+          <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-600">
+            {reportMonthLabel}
+          </span>
+          <button
+            type="button"
+            onClick={() => handleOpenOverlay('analytics')}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 transition hover:border-emerald-200 hover:text-emerald-600"
+          >
+            Ver gráficos
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-6 flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setReportMonthOffset(previous => previous - 1)}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-slate-600 transition hover:border-emerald-200 hover:text-emerald-600"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <div className="flex gap-2">
+          {monthSegmentOptions.map(option => (
+            <button
+              key={option.offset}
+              type="button"
+              onClick={() => setReportMonthOffset(option.offset)}
+              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                option.offset === reportMonthOffset
+                  ? 'bg-emerald-500 text-white shadow'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => setReportMonthOffset(previous => previous + 1)}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-slate-600 transition hover:border-emerald-200 hover:text-emerald-600"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="mt-6 flex items-center justify-between gap-3 rounded-2xl bg-slate-100 p-1 text-sm font-semibold text-slate-600">
+        {reportTabsConfig.map(tab => {
+          const Icon = tab.icon;
+          const isActive = reportTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setReportTab(tab.id)}
+              className={`flex flex-1 items-center justify-center gap-2 rounded-2xl px-3 py-2 transition ${
+                isActive ? 'bg-white text-emerald-600 shadow-sm' : 'hover:text-emerald-600'
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mt-6 space-y-4">{reportContent}</div>
+    </section>
+  );
+
+  type BottomNavItem = {
+    id: string;
+    label: string;
+    icon: LucideIcon;
+    onClick: () => void;
+    active?: boolean;
+    accent?: boolean;
+  };
+
+  const bottomNavItems: BottomNavItem[] = [
+    {
+      id: 'home',
+      label: 'Início',
+      icon: HomeIcon,
+      onClick: () => setActivePrimaryView('home'),
+      active: activePrimaryView === 'home',
+    },
+    {
+      id: 'reports',
+      label: 'Relatórios',
+      icon: LineChart,
+      onClick: () => {
+        setActivePrimaryView('reports');
+        setReportTab('general');
+      },
+      active: activePrimaryView === 'reports',
+    },
+    {
+      id: 'add',
+      label: 'Adicionar',
+      icon: Plus,
+      onClick: () => handleOpenOverlay('expense-tracker'),
+      accent: true,
+    },
+    {
+      id: 'cards',
+      label: 'Cartões',
+      icon: CreditCard,
+      onClick: () => handleOpenOverlay('credit-cards'),
+    },
+    {
+      id: 'accounts',
+      label: 'Contas',
+      icon: UserCircle,
+      onClick: () => handleOpenOverlay('accounts'),
+    },
+  ] as const;
+
+  return (
+    <div className="relative min-h-screen bg-slate-50 pb-24 text-slate-900">
+      <main className="mx-auto flex min-h-screen max-w-md flex-col gap-6 px-4 pb-32 pt-12 sm:max-w-2xl sm:px-6">
+        {activePrimaryView === 'home' ? homeView : reportsView}
       </main>
+
+      <nav className="fixed bottom-0 left-0 right-0 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
+        <div className="mx-auto flex max-w-md items-center justify-between gap-2 sm:max-w-2xl">
+          {bottomNavItems.map(item => {
+            const Icon = item.icon;
+            if (item.accent) {
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={item.onClick}
+                  className="relative -translate-y-6 rounded-full bg-emerald-500 p-4 text-white shadow-lg transition hover:bg-emerald-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                  aria-label={item.label}
+                >
+                  <Icon className="h-6 w-6" />
+                </button>
+              );
+            }
+
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={item.onClick}
+                className={`flex flex-1 flex-col items-center gap-1 rounded-2xl px-3 py-2 text-xs font-semibold transition ${
+                  item.active ? 'text-emerald-600' : 'text-slate-500 hover:text-emerald-600'
+                }`}
+              >
+                <Icon className={`h-5 w-5 ${item.active ? 'text-emerald-600' : ''}`} />
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+      </nav>
 
       {activeOverlayConfig && (
         <ExperienceOverlay
