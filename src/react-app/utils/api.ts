@@ -32,12 +32,14 @@ const getFallbackBaseUrl = () => {
 };
 
 const explicitBaseUrl = ensureScheme(sanitizedBaseUrl);
-const fallbackBaseUrl = getFallbackBaseUrl();
+const hostFallbackBaseUrl = getFallbackBaseUrl();
 
-const normalizedBaseUrl = explicitBaseUrl || fallbackBaseUrl || '';
-const secondaryBaseUrl = explicitBaseUrl && fallbackBaseUrl && explicitBaseUrl !== fallbackBaseUrl
-  ? fallbackBaseUrl
-  : '';
+// We first try the current origin (empty base URL) when no explicit base URL was provided.
+// If that fails with HTML/error responses we retry with the host-specific fallback below.
+const primaryBaseUrl = explicitBaseUrl || '';
+const secondaryBaseUrl = explicitBaseUrl
+  ? (hostFallbackBaseUrl && explicitBaseUrl !== hostFallbackBaseUrl ? hostFallbackBaseUrl : '')
+  : hostFallbackBaseUrl;
 
 export class OfflineError extends Error {
   readonly code = 'ERR_OFFLINE';
@@ -156,8 +158,8 @@ async function executeFetch(url: string, baseUrl: string, init?: RequestInit) {
 
 export async function apiFetch(path: string, init?: RequestInit) {
   const method = init?.method?.toUpperCase?.() ?? 'GET';
-  const primaryUrl = buildUrl(path, normalizedBaseUrl);
-  const primaryResponse = await executeFetch(primaryUrl, normalizedBaseUrl, init);
+  const primaryUrl = buildUrl(path, primaryBaseUrl);
+  const primaryResponse = await executeFetch(primaryUrl, primaryBaseUrl, init);
 
   if (shouldRetryWithFallback(primaryResponse, primaryUrl, method)) {
     if (typeof primaryResponse.body?.cancel === 'function') {
@@ -172,5 +174,5 @@ export async function apiFetch(path: string, init?: RequestInit) {
 }
 
 export function getApiUrl(path: string): string {
-  return buildUrl(path, normalizedBaseUrl);
+  return buildUrl(path, primaryBaseUrl || secondaryBaseUrl);
 }
