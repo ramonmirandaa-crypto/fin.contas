@@ -12,6 +12,7 @@ import {
   CheckCircle,
   AlertCircle,
   FileText,
+  X,
 } from 'lucide-react';
 import { apiFetch } from '@/react-app/utils/api';
 import { CreditCard as CreditCardType, CreateCreditCard } from '@/shared/types';
@@ -20,6 +21,19 @@ import {
   getCardNetworkVisual,
   getCardVisualConfig,
 } from '@/react-app/components/brand/FinancialBrandAssets';
+
+const BANK_OPTIONS = [
+  'Banco do Brasil',
+  'Bradesco',
+  'Caixa Econômica',
+  'Itaú',
+  'Nubank',
+  'Santander',
+  'Banco Inter',
+  'C6 Bank',
+  'Next',
+  'Outro',
+];
 
 interface ExtendedCreditCard extends CreditCardType {
   linked_account_id?: number;
@@ -51,6 +65,7 @@ export default function CreditCardManager() {
   const [editingCard, setEditingCard] = useState<ExtendedCreditCard | null>(null);
   const [syncingCard, setSyncingCard] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'cards' | 'bills'>('cards');
+  const [selectedBank, setSelectedBank] = useState('');
   const [formData, setFormData] = useState<CreateCreditCard>({
     name: '',
     credit_limit: 0,
@@ -86,6 +101,19 @@ export default function CreditCardManager() {
     fetchAvailableAccounts();
   }, []);
 
+  useEffect(() => {
+    if (!showForm && !showLinkModal) {
+      return;
+    }
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [showForm, showLinkModal]);
+
   const resetForm = () => {
     setFormData({
       name: '',
@@ -95,6 +123,19 @@ export default function CreditCardManager() {
     });
     setEditingCard(null);
     setShowForm(false);
+    setSelectedBank('');
+  };
+
+  const handleOpenForm = () => {
+    setEditingCard(null);
+    setFormData({
+      name: '',
+      credit_limit: 0,
+      current_balance: 0,
+      due_day: 1,
+    });
+    setSelectedBank('');
+    setShowForm(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -105,10 +146,15 @@ export default function CreditCardManager() {
       const url = editingCard ? `/api/credit-cards/${editingCard.id}` : '/api/credit-cards';
       const method = editingCard ? 'PUT' : 'POST';
       
+      const payload: CreateCreditCard = {
+        ...formData,
+        name: formData.name.trim() || selectedBank || 'Cartão',
+      };
+
       const response = await apiFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
@@ -130,6 +176,7 @@ export default function CreditCardManager() {
       current_balance: card.current_balance,
       due_day: card.due_day,
     });
+    setSelectedBank('Outro');
     setShowForm(true);
   };
 
@@ -262,7 +309,7 @@ export default function CreditCardManager() {
           <div className="flex items-center gap-3">
             {activeTab === 'cards' && (
               <button
-                onClick={() => setShowForm(true)}
+                onClick={handleOpenForm}
                 className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl hover:from-blue-600 hover:to-blue-700 transition-all shadow-lg"
               >
                 <Plus className="w-5 h-5" />
@@ -369,99 +416,181 @@ export default function CreditCardManager() {
           <>
             {/* Form */}
             {showForm && (
-          <form onSubmit={handleSubmit} className="bg-gray-50 rounded-xl p-6 mb-6">
-            <h3 className="text-lg font-semibold mb-4">
-              {editingCard ? 'Editar Cartão' : 'Novo Cartão de Crédito'}
-            </h3>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Nome do Cartão
-                </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Ex: Cartão Banco do Brasil"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Limite de Crédito
-                </label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500">
-                    R$
-                  </span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.credit_limit || ''}
-                    onChange={(e) => setFormData(prev => ({ ...prev, credit_limit: parseFloat(e.target.value) || 0 }))}
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="0,00"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Saldo Atual
-                </label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500">
-                    R$
-                  </span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.current_balance || ''}
-                    onChange={(e) => setFormData(prev => ({ ...prev, current_balance: parseFloat(e.target.value) || 0 }))}
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="0,00"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Dia do Vencimento
-                </label>
-                <select
-                  value={formData.due_day}
-                  onChange={(e) => setFormData(prev => ({ ...prev, due_day: parseInt(e.target.value) }))}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
-                    <option key={day} value={day}>Dia {day}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                type="submit"
-                disabled={submitting}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
-              >
-                {submitting ? 'Salvando...' : editingCard ? 'Atualizar' : 'Adicionar'}
-              </button>
-              <button
-                type="button"
+              <div
+                className="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40 px-4 pb-6 pt-24 sm:items-center"
                 onClick={resetForm}
-                className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+                role="dialog"
+                aria-modal
               >
-                Cancelar
-              </button>
-            </div>
-          </form>
-        )}
+                <form
+                  onSubmit={handleSubmit}
+                  onClick={event => event.stopPropagation()}
+                  className="relative w-full max-w-lg overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"
+                >
+                  <div className="flex justify-center py-3">
+                    <span className="h-1.5 w-12 rounded-full bg-slate-200" />
+                  </div>
+                  <div className="space-y-5 px-6 pb-6">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-500">
+                          {editingCard ? 'Editar cartão' : 'Criar novo cartão'}
+                        </p>
+                        <h3 className="mt-2 text-xl font-semibold text-slate-900">
+                          Gerencie limites e sincronização
+                        </h3>
+                        <p className="mt-1 text-sm text-slate-500">
+                          Cadastre manualmente ou conecte ao Open Finance para atualizar automaticamente.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={resetForm}
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-emerald-200 hover:text-emerald-600"
+                        aria-label="Fechar formulário"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                          Selecionar banco
+                        </label>
+                        <select
+                          value={selectedBank}
+                          onChange={event => {
+                            const value = event.target.value;
+                            setSelectedBank(value);
+                            if (!editingCard && !formData.name) {
+                              setFormData(prev => ({ ...prev, name: value || '' }));
+                            }
+                          }}
+                          className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 shadow-sm focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                        >
+                          <option value="">Selecione</option>
+                          {BANK_OPTIONS.map(option => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                          Título do cartão
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.name}
+                          onChange={event =>
+                            setFormData(prev => ({ ...prev, name: event.target.value }))
+                          }
+                          placeholder="Ex: Cartão Black Corporativo"
+                          required
+                          className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                        />
+                      </div>
+
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                            Limite total
+                          </label>
+                          <div className="relative mt-2">
+                            <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">
+                              R$
+                            </span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={formData.credit_limit || ''}
+                              onChange={event =>
+                                setFormData(prev => ({
+                                  ...prev,
+                                  credit_limit: parseFloat(event.target.value) || 0,
+                                }))
+                              }
+                              placeholder="0,00"
+                              required
+                              className="w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-4 py-3 text-sm font-medium text-slate-700 shadow-sm focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                            Saldo atual
+                          </label>
+                          <div className="relative mt-2">
+                            <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">
+                              R$
+                            </span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={formData.current_balance || ''}
+                              onChange={event =>
+                                setFormData(prev => ({
+                                  ...prev,
+                                  current_balance: parseFloat(event.target.value) || 0,
+                                }))
+                              }
+                              placeholder="0,00"
+                              className="w-full rounded-2xl border border-slate-200 bg-white pl-10 pr-4 py-3 text-sm font-medium text-slate-700 shadow-sm focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                          Fechamento da fatura
+                        </label>
+                        <select
+                          value={formData.due_day}
+                          onChange={event =>
+                            setFormData(prev => ({
+                              ...prev,
+                              due_day: parseInt(event.target.value, 10),
+                            }))
+                          }
+                          className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                        >
+                          {Array.from({ length: 31 }, (_, index) => index + 1).map(day => (
+                            <option key={day} value={day}>
+                              Dia {day}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl bg-slate-50 p-4 text-xs text-slate-500">
+                      Vincule este cartão a uma conta sincronizada pelo Open Finance para atualizar faturas e limites automaticamente.
+                    </div>
+
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+                      <button
+                        type="button"
+                        onClick={resetForm}
+                        className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-emerald-200 hover:text-emerald-600"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={submitting}
+                        className="inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-blue-500 to-blue-600 px-6 py-2 text-sm font-semibold text-white shadow transition hover:from-blue-600 hover:to-blue-700 disabled:opacity-60"
+                      >
+                        {submitting ? 'Salvando...' : editingCard ? 'Atualizar cartão' : 'Salvar cartão'}
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            )}
 
         {/* Cards List */}
         <div className="space-y-6">
