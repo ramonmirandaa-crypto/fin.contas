@@ -15,13 +15,17 @@ npm run dev
 Configure as seguintes variáveis de ambiente (veja `.env.example`):
 
 ```
-VITE_CLERK_PUBLISHABLE_KEY="pk_test_xxx"
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="pk_test_xxx"
 CLERK_SECRET_KEY="sk_test_xxx"
+# Opcional: mantenha apenas se ainda utilizar o build Vite legado
+VITE_CLERK_PUBLISHABLE_KEY="pk_test_xxx"
 VITE_API_BASE_URL="https://seu-worker.exemplo"
 ```
 
-O `publishable key` é utilizado no front-end e o `secret key` mantém a validação de sessões no Worker.
+O `publishable key` (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`) é utilizado no front-end Next.js recém configurado
+e o `secret key` mantém a validação de sessões no Worker.
 `VITE_API_BASE_URL` é opcional; defina-o quando o Worker estiver hospedado em um domínio diferente para que o front-end consiga chamar a API.
+Caso esteja migrando gradualmente do Vite para o Next.js, mantenha `VITE_CLERK_PUBLISHABLE_KEY` configurado até que o novo front-end esteja em produção.
 
 ### Prisma tooling
 
