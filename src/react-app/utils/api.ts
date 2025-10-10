@@ -34,12 +34,13 @@ const getFallbackBaseUrl = () => {
 const explicitBaseUrl = ensureScheme(sanitizedBaseUrl);
 const hostFallbackBaseUrl = getFallbackBaseUrl();
 
-// We first try the current origin (empty base URL) when no explicit base URL was provided.
-// If that fails with HTML/error responses we retry with the host-specific fallback below.
-const primaryBaseUrl = explicitBaseUrl || '';
-const secondaryBaseUrl = explicitBaseUrl
-  ? (hostFallbackBaseUrl && explicitBaseUrl !== hostFallbackBaseUrl ? hostFallbackBaseUrl : '')
-  : hostFallbackBaseUrl;
+// When an explicit base URL isn't provided we default to the host-specific fallback so the
+// app calls the deployed API directly instead of relying on same-origin routing. We only
+// keep a secondary fallback when an explicit base differs from that host mapping.
+const primaryBaseUrl = explicitBaseUrl || hostFallbackBaseUrl || '';
+const secondaryBaseUrl = explicitBaseUrl && hostFallbackBaseUrl && explicitBaseUrl !== hostFallbackBaseUrl
+  ? hostFallbackBaseUrl
+  : '';
 
 type ClerkSessionLike = {
   getToken: (options?: Record<string, unknown>) => Promise<string | null>;
