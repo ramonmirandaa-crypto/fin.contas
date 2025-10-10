@@ -6,7 +6,7 @@
 - Data da verificação: 2025-10-08
 
 ## Sumário Executivo
-- ❌ **Instância pública inoperante**: `https://fincontas.ramonma.online` retorna `403 Forbidden` mesmo para requisições simples (`curl`).
+- ⚠️ **Instância pública com comportamento divergente**: `https://fincontas.ramonma.online` ainda retorna `403 Forbidden` para `curl`, mas o log HTTP recente do servidor indica respostas `304 Not Modified` para arquivos estáticos.
 - ✅ **Build passa**: `npm run build` finaliza com sucesso; a verificação anterior sobre `c.env.DB.batch(...)` foi resolvida.
 - ⚠️ **UI ainda expõe ações sem backend correspondente**: Diversos botões abrem overlays que dependem de endpoints não implementados (por exemplo, cadastro/edição de investimentos, empréstimos e operações de faturas de cartão).
 - ❌ **Banco de dados continua incompleto**: O schema Prisma cria apenas tabelas básicas (accounts, transactions, budgets, goals); tabelas usadas pelos endpoints de cartões, investimentos, empréstimos e faturas não existem, causando falhas de persistência.
@@ -15,6 +15,14 @@
 
 ### Instância Pública
 - A URL informada (`https://fincontas.ramonma.online`) responde com `HTTP/1.1 403 Forbidden` e encerra a conexão, indicando que o ambiente não está servindo o front-end ou está bloqueando o acesso externo. 【382b3a†L1-L9】
+- Contudo, o log HTTP encaminhado pelo time mostra respostas `304` para os assets `index-BWL6O9RP.css` e `index-k1D9Ctl3.js`, sugerindo que a CDN ou o servidor de arquivos está operando para clientes específicos:
+
+  ```text
+  {"level":"info","ts":1760117317.100044,"logger":"http.log.access.log0","msg":"handled request","request":{"method":"GET","host":"fincontas.ramonma.online","uri":"/assets/index-BWL6O9RP.css"},"status":304}
+  {"level":"info","ts":1760117317.101226,"logger":"http.log.access.log0","msg":"handled request","request":{"method":"GET","host":"fincontas.ramonma.online","uri":"/assets/index-k1D9Ctl3.js"},"status":304}
+  ```
+
+  A diferença indica possíveis regras condicionais (por IP, user-agent ou proxy) entre o ambiente de teste e o de produção monitorado pelo log.
 
 ### Estado do Build
 - `npm run build` executou normalmente, gerando os artefatos em `dist/` sem mensagens de erro. 【8400a0†L1-L19】
