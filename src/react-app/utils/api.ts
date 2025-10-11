@@ -68,7 +68,13 @@ const isSameOriginBaseUrl = (value: string): boolean => {
 
 const explicitBaseUrl = ensureScheme(sanitizedBaseUrl);
 
-const resolveBaseUrls = () => {
+type BaseUrlResolution = {
+  primaryBaseUrl: string;
+  secondaryBaseUrl: string;
+  hostFallbackBaseUrl: string;
+};
+
+const resolveBaseUrls = (): BaseUrlResolution => {
   const hostFallbackBaseUrl = getHostFallbackBaseUrl();
   const primaryBaseUrl = explicitBaseUrl || hostFallbackBaseUrl || '';
   const secondaryBaseUrl =
@@ -87,8 +93,6 @@ const isMutatingMethod = (method: string) => {
   const normalized = method.toUpperCase();
   return normalized !== 'GET' && normalized !== 'HEAD';
 };
-
-type BaseUrlResolution = ReturnType<typeof resolveBaseUrls>;
 
 const buildBaseUrlAttempts = (method: string, path: string, baseUrls: BaseUrlResolution) => {
   const attempts: string[] = [];
