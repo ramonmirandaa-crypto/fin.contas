@@ -76,6 +76,41 @@ const isSameOriginBaseUrl = (value: string): boolean => {
   }
 };
 
+const normalizePathForOrigin = (value: string): string => {
+  if (!value) {
+    return '/';
+  }
+
+  if (/^https?:\/\//i.test(value)) {
+    try {
+      const url = new URL(value);
+      return url.pathname || '/';
+    } catch {
+      return '/';
+    }
+  }
+
+  const normalizedPath = value.startsWith('/') ? value : `/${value}`;
+  return normalizedPath || '/';
+};
+
+const isSameOriginBaseUrl = (value: string): boolean => {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  if (!value) {
+    return true;
+  }
+
+  try {
+    const candidate = new URL(value, window.location.origin);
+    return candidate.origin === window.location.origin;
+  } catch {
+    return false;
+  }
+};
+
 const explicitBaseUrl = ensureScheme(sanitizedBaseUrl);
 
 type BaseUrlResolution = {
@@ -286,17 +321,23 @@ function shouldRetryWithNextBase(
   const resolvedUrl = resolveAttemptedUrl(attemptedUrl);
 
   if (!resolvedUrl.startsWith(window.location.origin)) {
-    return false;
+    return '';
   }
 
-  if (response.status === 404 || response.status === 405) {
-    return true;
+  if (!secondaryBaseUrl && (!hostFallbackBaseUrl || hostFallbackBaseUrl === attemptedBaseUrl)) {
+    return '';
   }
 
-  const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+  if (response.status !== 404 && response.status !== 405) {
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
 
-  if (!contentType.includes('text/html')) {
-    return false;
+    if (!contentType.includes('text/html')) {
+      return '';
+    }
+
+    if (!resolvedUrl.includes('/api/') && method === 'GET') {
+      return '';
+    }
   }
 
   const normalizedPath = normalizePathForOrigin(attemptedUrl);
