@@ -109,20 +109,19 @@ const buildBaseUrlAttempts = (method: string, path: string, baseUrls: BaseUrlRes
   };
 
   const normalizedPath = normalizePathForOrigin(path);
-  const { primaryBaseUrl, secondaryBaseUrl, hostFallbackBaseUrl } = baseUrls;
   const preferHostFallback =
-    Boolean(hostFallbackBaseUrl) &&
-    isSameOriginBaseUrl(primaryBaseUrl) &&
+    Boolean(baseUrls.hostFallbackBaseUrl) &&
+    isSameOriginBaseUrl(baseUrls.primaryBaseUrl) &&
     (isMutatingMethod(method) || normalizedPath.startsWith('/api/'));
 
   if (preferHostFallback) {
-    pushBaseUrl(hostFallbackBaseUrl);
-    pushBaseUrl(primaryBaseUrl);
-    pushBaseUrl(secondaryBaseUrl);
+    pushBaseUrl(baseUrls.hostFallbackBaseUrl);
+    pushBaseUrl(baseUrls.primaryBaseUrl);
+    pushBaseUrl(baseUrls.secondaryBaseUrl);
   } else {
-    pushBaseUrl(primaryBaseUrl);
-    pushBaseUrl(secondaryBaseUrl);
-    pushBaseUrl(hostFallbackBaseUrl);
+    pushBaseUrl(baseUrls.primaryBaseUrl);
+    pushBaseUrl(baseUrls.secondaryBaseUrl);
+    pushBaseUrl(baseUrls.hostFallbackBaseUrl);
   }
 
   if (!attempts.length) {
@@ -275,17 +274,23 @@ function shouldRetryWithNextBase(
   const resolvedUrl = resolveAttemptedUrl(attemptedUrl);
 
   if (!resolvedUrl.startsWith(window.location.origin)) {
-    return false;
+    return '';
   }
 
-  if (response.status === 404 || response.status === 405) {
-    return true;
+  if (!secondaryBaseUrl && (!hostFallbackBaseUrl || hostFallbackBaseUrl === attemptedBaseUrl)) {
+    return '';
   }
 
-  const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+  if (response.status !== 404 && response.status !== 405) {
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
 
-  if (!contentType.includes('text/html')) {
-    return false;
+    if (!contentType.includes('text/html')) {
+      return '';
+    }
+
+    if (!resolvedUrl.includes('/api/') && method === 'GET') {
+      return '';
+    }
   }
 
   const normalizedPath = normalizePathForOrigin(attemptedUrl);
