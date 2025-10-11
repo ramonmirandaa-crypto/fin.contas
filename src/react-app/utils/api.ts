@@ -31,6 +31,65 @@ const getHostFallbackBaseUrl = () => {
   return ensureScheme(fallback.replace(/\/+$/, ''));
 };
 
+const normalizePathForOrigin = (value: string): string => {
+  if (!value) {
+    return '/';
+  }
+
+  if (/^https?:\/\//i.test(value)) {
+    try {
+      const url = new URL(value);
+      return url.pathname || '/';
+    } catch (_error) {
+      return '/';
+    }
+  }
+
+  const normalizedPath = value.startsWith('/') ? value : `/${value}`;
+  return normalizedPath || '/';
+};
+
+const isSameOriginBaseUrl = (value: string): boolean => {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  if (!value) {
+    return true;
+  }
+
+  try {
+    const candidate = new URL(value, window.location.origin);
+    return candidate.origin === window.location.origin;
+  } catch (_error) {
+    return false;
+  }
+};
+
+const shouldPreferHostFallback = (
+  method: string,
+  path: string,
+  attemptedBaseUrl: string,
+  hostFallbackBaseUrl: string,
+) => {
+  if (!hostFallbackBaseUrl) {
+    return false;
+  }
+
+  if (!isSameOriginBaseUrl(attemptedBaseUrl)) {
+    return false;
+  }
+
+  const normalizedMethod = method.toUpperCase();
+
+  if (normalizedMethod !== 'GET' && normalizedMethod !== 'HEAD') {
+    return true;
+  }
+
+  const normalizedPath = normalizePathForOrigin(path);
+  return normalizedPath.startsWith('/api/');
+};
+
 const explicitBaseUrl = ensureScheme(sanitizedBaseUrl);
 
 const resolveBaseUrls = () => {
@@ -240,8 +299,20 @@ export async function apiFetch(path: string, init?: RequestInit) {
   const { primaryBaseUrl, secondaryBaseUrl, hostFallbackBaseUrl } = resolveBaseUrls();
   const requestInit = await withClerkAuthorization(init);
   const method = requestInit.method?.toUpperCase?.() ?? 'GET';
+
+  let primaryBaseUrl = baseUrls.primaryBaseUrl;
+  let secondaryBaseUrl = baseUrls.secondaryBaseUrl;
+  const { hostFallbackBaseUrl } = baseUrls;
+
+  if (shouldPreferHostFallback(method, path, primaryBaseUrl, hostFallbackBaseUrl)) {
+    if (primaryBaseUrl && primaryBaseUrl !== hostFallbackBaseUrl) {
+      secondaryBaseUrl = primaryBaseUrl;
+    }
+
+    primaryBaseUrl = hostFallbackBaseUrl;
+  }
+
   const primaryUrl = buildUrl(path, primaryBaseUrl);
-  const primaryResponse = await executeFetch(primaryUrl, primaryBaseUrl, requestInit);
 
   const fallbackBaseUrl = resolveFallbackBaseUrl(primaryResponse, primaryUrl, method, {
     attemptedBaseUrl: primaryBaseUrl,
@@ -258,7 +329,7 @@ export async function apiFetch(path: string, init?: RequestInit) {
     return executeFetch(fallbackUrl, fallbackBaseUrl, requestInit);
   }
 
-  return primaryResponse;
+  throw primaryError ?? new Error('Request failed');
 }
 
 export function getApiUrl(path: string): string {
