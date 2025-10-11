@@ -1,5 +1,15 @@
 const rawBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
-const sanitizedBaseUrl = rawBaseUrl ? rawBaseUrl.replace(/\/+$/, '') : '';
+const stripTrailingSlashes = (value: string): string => {
+  let end = value.length;
+
+  while (end > 0 && value.charCodeAt(end - 1) === 47 /* '/' */) {
+    end -= 1;
+  }
+
+  return value.slice(0, end);
+};
+
+const sanitizedBaseUrl = rawBaseUrl ? stripTrailingSlashes(rawBaseUrl) : '';
 
 const PRODUCTION_FALLBACKS: Record<string, string> = {
   'contas.ramonma.online': 'https://n5jcegoubmvau.mocha.app',
@@ -28,7 +38,42 @@ const getHostFallbackBaseUrl = () => {
     return '';
   }
 
-  return ensureScheme(fallback.replace(/\/+$/, ''));
+  return ensureScheme(stripTrailingSlashes(fallback));
+};
+
+const normalizePathForOrigin = (value: string): string => {
+  if (!value) {
+    return '/';
+  }
+
+  if (/^https?:\/\//i.test(value)) {
+    try {
+      const url = new URL(value);
+      return url.pathname || '/';
+    } catch {
+      return '/';
+    }
+  }
+
+  const normalizedPath = value.startsWith('/') ? value : `/${value}`;
+  return normalizedPath || '/';
+};
+
+const isSameOriginBaseUrl = (value: string): boolean => {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  if (!value) {
+    return true;
+  }
+
+  try {
+    const candidate = new URL(value, window.location.origin);
+    return candidate.origin === window.location.origin;
+  } catch {
+    return false;
+  }
 };
 
 const normalizePathForOrigin = (value: string): string => {
@@ -97,7 +142,7 @@ const isMutatingMethod = (method: string) => {
 const buildBaseUrlAttempts = (method: string, path: string, baseUrls: BaseUrlResolution) => {
   const attempts: string[] = [];
   const pushBaseUrl = (candidate?: string | null) => {
-    if (!candidate) {/
+    if (!candidate) {
       return;
     }
 
