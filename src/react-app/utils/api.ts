@@ -114,14 +114,12 @@ const buildBaseUrlAttempts = (method: string, path: string, baseUrls: BaseUrlRes
     isSameOriginBaseUrl(baseUrls.primaryBaseUrl) &&
     (isMutatingMethod(method) || normalizedPath.startsWith('/api/'));
 
-  if (preferHostFallback) {
-    pushBaseUrl(baseUrls.hostFallbackBaseUrl);
-    pushBaseUrl(baseUrls.primaryBaseUrl);
-    pushBaseUrl(baseUrls.secondaryBaseUrl);
-  } else {
-    pushBaseUrl(baseUrls.primaryBaseUrl);
-    pushBaseUrl(baseUrls.secondaryBaseUrl);
-    pushBaseUrl(baseUrls.hostFallbackBaseUrl);
+  const candidateOrder: Array<keyof BaseUrlResolution> = preferHostFallback
+    ? ['hostFallbackBaseUrl', 'primaryBaseUrl', 'secondaryBaseUrl']
+    : ['primaryBaseUrl', 'secondaryBaseUrl', 'hostFallbackBaseUrl'];
+
+  for (const key of candidateOrder) {
+    pushBaseUrl(baseUrls[key]);
   }
 
   if (!attempts.length) {
