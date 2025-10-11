@@ -270,17 +270,23 @@ function shouldRetryWithNextBase(
   const resolvedUrl = resolveAttemptedUrl(attemptedUrl);
 
   if (!resolvedUrl.startsWith(window.location.origin)) {
-    return false;
+    return '';
   }
 
-  if (response.status === 404 || response.status === 405) {
-    return true;
+  if (!secondaryBaseUrl && (!hostFallbackBaseUrl || hostFallbackBaseUrl === attemptedBaseUrl)) {
+    return '';
   }
 
-  const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+  if (response.status !== 404 && response.status !== 405) {
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
 
-  if (!contentType.includes('text/html')) {
-    return false;
+    if (!contentType.includes('text/html')) {
+      return '';
+    }
+
+    if (!resolvedUrl.includes('/api/') && method === 'GET') {
+      return '';
+    }
   }
 
   const normalizedPath = normalizePathForOrigin(attemptedUrl);
