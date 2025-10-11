@@ -296,7 +296,7 @@ async function executeFetch(url: string, baseUrl: string, init?: RequestInit) {
 }
 
 export async function apiFetch(path: string, init?: RequestInit) {
-  const baseUrls = resolveBaseUrls();
+  const { primaryBaseUrl, secondaryBaseUrl, hostFallbackBaseUrl } = resolveBaseUrls();
   const requestInit = await withClerkAuthorization(init);
   const method = requestInit.method?.toUpperCase?.() ?? 'GET';
 
@@ -314,42 +314,19 @@ export async function apiFetch(path: string, init?: RequestInit) {
 
   const primaryUrl = buildUrl(path, primaryBaseUrl);
 
-  let primaryResponse: Response | null = null;
-  let primaryError: unknown = null;
-
-  try {
-    primaryResponse = await executeFetch(primaryUrl, primaryBaseUrl, requestInit);
-  } catch (error) {
-    primaryError = error;
-  }
-
-  let fallbackBaseUrl = '';
-
-  if (primaryResponse) {
-    fallbackBaseUrl = resolveFallbackBaseUrl(primaryResponse, primaryUrl, method, {
-      attemptedBaseUrl: primaryBaseUrl,
-      hostFallbackBaseUrl,
-      secondaryBaseUrl,
-    });
-  } else if (primaryError) {
-    if (secondaryBaseUrl && secondaryBaseUrl !== primaryBaseUrl) {
-      fallbackBaseUrl = secondaryBaseUrl;
-    } else if (hostFallbackBaseUrl && hostFallbackBaseUrl !== primaryBaseUrl) {
-      fallbackBaseUrl = hostFallbackBaseUrl;
-    }
-  }
+  const fallbackBaseUrl = resolveFallbackBaseUrl(primaryResponse, primaryUrl, method, {
+    attemptedBaseUrl: primaryBaseUrl,
+    hostFallbackBaseUrl,
+    secondaryBaseUrl,
+  });
 
   if (fallbackBaseUrl) {
-    if (primaryResponse && typeof primaryResponse.body?.cancel === 'function') {
+    if (typeof primaryResponse.body?.cancel === 'function') {
       primaryResponse.body.cancel().catch(() => {});
     }
 
     const fallbackUrl = buildUrl(path, fallbackBaseUrl);
     return executeFetch(fallbackUrl, fallbackBaseUrl, requestInit);
-  }
-
-  if (primaryResponse) {
-    return primaryResponse;
   }
 
   throw primaryError ?? new Error('Request failed');
