@@ -18,7 +18,7 @@ const ensureScheme = (value: string) => {
   return `https://${value}`;
 };
 
-const getFallbackBaseUrl = () => {
+const getHostFallbackBaseUrl = () => {
   if (typeof window === 'undefined') {
     return '';
   }
@@ -31,15 +31,81 @@ const getFallbackBaseUrl = () => {
   return ensureScheme(fallback.replace(/\/+$/, ''));
 };
 
-const explicitBaseUrl = ensureScheme(sanitizedBaseUrl);
-const hostFallbackBaseUrl = getFallbackBaseUrl();
+const normalizePathForOrigin = (value: string): string => {
+  if (!value) {
+    return '/';
+  }
 
-// We first try the current origin (empty base URL) when no explicit base URL was provided.
-// If that fails with HTML/error responses we retry with the host-specific fallback below.
-const primaryBaseUrl = explicitBaseUrl || '';
-const secondaryBaseUrl = explicitBaseUrl
-  ? (hostFallbackBaseUrl && explicitBaseUrl !== hostFallbackBaseUrl ? hostFallbackBaseUrl : '')
-  : hostFallbackBaseUrl;
+  if (/^https?:\/\//i.test(value)) {
+    try {
+      const url = new URL(value);
+      return url.pathname || '/';
+    } catch (_error) {
+      return '/';
+    }
+  }
+
+  const normalizedPath = value.startsWith('/') ? value : `/${value}`;
+  return normalizedPath || '/';
+};
+
+const isSameOriginBaseUrl = (value: string): boolean => {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  if (!value) {
+    return true;
+  }
+
+  try {
+    const candidate = new URL(value, window.location.origin);
+    return candidate.origin === window.location.origin;
+  } catch (_error) {
+    return false;
+  }
+};
+
+const shouldPreferHostFallback = (
+  method: string,
+  path: string,
+  attemptedBaseUrl: string,
+  hostFallbackBaseUrl: string,
+) => {
+  if (!hostFallbackBaseUrl) {
+    return false;
+  }
+
+  if (!isSameOriginBaseUrl(attemptedBaseUrl)) {
+    return false;
+  }
+
+  const normalizedMethod = method.toUpperCase();
+
+  if (normalizedMethod !== 'GET' && normalizedMethod !== 'HEAD') {
+    return true;
+  }
+
+  const normalizedPath = normalizePathForOrigin(path);
+  return normalizedPath.startsWith('/api/');
+};
+
+const explicitBaseUrl = ensureScheme(sanitizedBaseUrl);
+
+const resolveBaseUrls = () => {
+  const hostFallbackBaseUrl = getHostFallbackBaseUrl();
+  const primaryBaseUrl = explicitBaseUrl || hostFallbackBaseUrl || '';
+  const secondaryBaseUrl =
+    explicitBaseUrl && hostFallbackBaseUrl && explicitBaseUrl !== hostFallbackBaseUrl
+      ? hostFallbackBaseUrl
+      : '';
+
+  return {
+    primaryBaseUrl,
+    secondaryBaseUrl,
+    hostFallbackBaseUrl,
+  };
+};
 
 type ClerkSessionLike = {
   getToken: (options?: Record<string, unknown>) => Promise<string | null>;
@@ -162,36 +228,53 @@ function resolveAttemptedUrl(attemptedUrl: string): string {
   return `${window.location.origin}${normalizedPath}`;
 }
 
-function shouldRetryWithFallback(response: Response, attemptedUrl: string, method: string): boolean {
-  if (typeof window === 'undefined') {
-    return false;
-  }
+type FallbackResolution = {
+  attemptedBaseUrl: string;
+  hostFallbackBaseUrl: string;
+  secondaryBaseUrl: string;
+};
 
-  if (!secondaryBaseUrl) {
-    return false;
+function resolveFallbackBaseUrl(
+  response: Response,
+  attemptedUrl: string,
+  method: string,
+  { attemptedBaseUrl, hostFallbackBaseUrl, secondaryBaseUrl }: FallbackResolution,
+): string {
+  if (typeof window === 'undefined') {
+    return '';
   }
 
   const resolvedUrl = resolveAttemptedUrl(attemptedUrl);
 
   if (!resolvedUrl.startsWith(window.location.origin)) {
-    return false;
+    return '';
   }
 
-  if (response.status === 404 || response.status === 405) {
-    return true;
+  if (!secondaryBaseUrl && (!hostFallbackBaseUrl || hostFallbackBaseUrl === attemptedBaseUrl)) {
+    return '';
   }
 
-  const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+  if (response.status !== 404 && response.status !== 405) {
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
 
-  if (!contentType.includes('text/html')) {
-    return false;
+    if (!contentType.includes('text/html')) {
+      return '';
+    }
+
+    if (!resolvedUrl.includes('/api/') && method === 'GET') {
+      return '';
+    }
   }
 
-  if (resolvedUrl.includes('/api/')) {
-    return true;
+  if (secondaryBaseUrl && secondaryBaseUrl !== attemptedBaseUrl) {
+    return secondaryBaseUrl;
   }
 
-  return method !== 'GET';
+  if (hostFallbackBaseUrl && hostFallbackBaseUrl !== attemptedBaseUrl) {
+    return hostFallbackBaseUrl;
+  }
+
+  return '';
 }
 
 async function executeFetch(url: string, baseUrl: string, init?: RequestInit) {
@@ -213,23 +296,66 @@ async function executeFetch(url: string, baseUrl: string, init?: RequestInit) {
 }
 
 export async function apiFetch(path: string, init?: RequestInit) {
+  const baseUrls = resolveBaseUrls();
   const requestInit = await withClerkAuthorization(init);
   const method = requestInit.method?.toUpperCase?.() ?? 'GET';
-  const primaryUrl = buildUrl(path, primaryBaseUrl);
-  const primaryResponse = await executeFetch(primaryUrl, primaryBaseUrl, requestInit);
 
-  if (shouldRetryWithFallback(primaryResponse, primaryUrl, method)) {
-    if (typeof primaryResponse.body?.cancel === 'function') {
+  let primaryBaseUrl = baseUrls.primaryBaseUrl;
+  let secondaryBaseUrl = baseUrls.secondaryBaseUrl;
+  const { hostFallbackBaseUrl } = baseUrls;
+
+  if (shouldPreferHostFallback(method, path, primaryBaseUrl, hostFallbackBaseUrl)) {
+    if (primaryBaseUrl && primaryBaseUrl !== hostFallbackBaseUrl) {
+      secondaryBaseUrl = primaryBaseUrl;
+    }
+
+    primaryBaseUrl = hostFallbackBaseUrl;
+  }
+
+  const primaryUrl = buildUrl(path, primaryBaseUrl);
+
+  let primaryResponse: Response | null = null;
+  let primaryError: unknown = null;
+
+  try {
+    primaryResponse = await executeFetch(primaryUrl, primaryBaseUrl, requestInit);
+  } catch (error) {
+    primaryError = error;
+  }
+
+  let fallbackBaseUrl = '';
+
+  if (primaryResponse) {
+    fallbackBaseUrl = resolveFallbackBaseUrl(primaryResponse, primaryUrl, method, {
+      attemptedBaseUrl: primaryBaseUrl,
+      hostFallbackBaseUrl,
+      secondaryBaseUrl,
+    });
+  } else if (primaryError) {
+    if (secondaryBaseUrl && secondaryBaseUrl !== primaryBaseUrl) {
+      fallbackBaseUrl = secondaryBaseUrl;
+    } else if (hostFallbackBaseUrl && hostFallbackBaseUrl !== primaryBaseUrl) {
+      fallbackBaseUrl = hostFallbackBaseUrl;
+    }
+  }
+
+  if (fallbackBaseUrl) {
+    if (primaryResponse && typeof primaryResponse.body?.cancel === 'function') {
       primaryResponse.body.cancel().catch(() => {});
     }
 
-    const fallbackUrl = buildUrl(path, secondaryBaseUrl);
-    return executeFetch(fallbackUrl, secondaryBaseUrl, requestInit);
+    const fallbackUrl = buildUrl(path, fallbackBaseUrl);
+    return executeFetch(fallbackUrl, fallbackBaseUrl, requestInit);
   }
 
-  return primaryResponse;
+  if (primaryResponse) {
+    return primaryResponse;
+  }
+
+  throw primaryError ?? new Error('Request failed');
 }
 
 export function getApiUrl(path: string): string {
+  const { primaryBaseUrl, secondaryBaseUrl } = resolveBaseUrls();
   return buildUrl(path, primaryBaseUrl || secondaryBaseUrl);
 }
