@@ -514,10 +514,8 @@ export async function apiFetch(path: string, init?: RequestInit) {
 
       try {
         const response = await executeFetch(url, baseUrl, requestInit);
-        const status = response.status;
-        const isAuthorizationFailure = status === 401 || status === 403;
 
-        if (isAuthorizationFailure) {
+        if (response.status === 401) {
           if (hasAuthorizationHeader && authAttempt === 0) {
             const responseBody = response.body;
 
