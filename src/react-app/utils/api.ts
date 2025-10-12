@@ -163,8 +163,167 @@ function getAuthorizationHeader(headers?: HeadersInit | null): string | null {
   }
 }
 
+const TOKEN_REFRESH_BUFFER_MS = 30_000;
+const DEFAULT_TOKEN_TTL_MS = 2 * 60_000;
+
+type TokenCacheEntry = {
+  token: string;
+  expiresAt: number;
+};
+
+let cachedClerkToken: TokenCacheEntry | null = null;
+let inflightTokenPromise: Promise<string | null> | null = null;
+
+const getGlobalAtob = () => {
+  if (typeof globalThis !== 'undefined') {
+    const globalAtob = (globalThis as { atob?: typeof atob }).atob;
+    if (typeof globalAtob === 'function') {
+      return globalAtob.bind(globalThis);
+    }
+
+    const globalBuffer = (globalThis as {
+      Buffer?: {
+        from: (input: string, encoding: string) => { toString: (encoding: string) => string };
+      };
+    }).Buffer;
+
+    if (globalBuffer) {
+      return (value: string) => globalBuffer.from(value, 'base64').toString('binary');
+    }
+  }
+
+  if (typeof atob === 'function') {
+    return atob;
+  }
+
+  return null;
+};
+
+const decodeBase64Url = (segment: string): string | null => {
+  try {
+    const normalized = segment.replace(/-/g, '+').replace(/_/g, '/');
+    const paddingLength = (4 - (normalized.length % 4)) % 4;
+    const padded = normalized.padEnd(normalized.length + paddingLength, '=');
+    const decoder = getGlobalAtob();
+
+    if (!decoder) {
+      return null;
+    }
+
+    return decoder(padded);
+  } catch {
+    return null;
+  }
+};
+
+const decodeJwtPayload = (token: string): Record<string, unknown> | null => {
+  const segments = token.split('.');
+  if (segments.length < 2) {
+    return null;
+  }
+
+  const payloadSegment = segments[1];
+  const decoded = decodeBase64Url(payloadSegment);
+
+  if (!decoded) {
+    return null;
+  }
+
+  try {
+    const jsonString = decodeURIComponent(
+      decoded
+        .split('')
+        .map(char => `%${char.charCodeAt(0).toString(16).padStart(2, '0')}`)
+        .join('')
+    );
+
+    return JSON.parse(jsonString) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+};
+
+const extractTokenExpiry = (token: string): number | null => {
+  const payload = decodeJwtPayload(token);
+  const exp = payload?.exp;
+
+  if (typeof exp === 'number' && Number.isFinite(exp)) {
+    return exp * 1000;
+  }
+
+  return null;
+};
+
+const getCachedClerkToken = (): string | null => {
+  if (!cachedClerkToken) {
+    return null;
+  }
+
+  if (Date.now() >= cachedClerkToken.expiresAt - TOKEN_REFRESH_BUFFER_MS) {
+    cachedClerkToken = null;
+    return null;
+  }
+
+  return cachedClerkToken.token;
+};
+
+const rememberClerkToken = (token: string | null) => {
+  if (!token) {
+    cachedClerkToken = null;
+    return;
+  }
+
+  const expiresAt = extractTokenExpiry(token) ?? Date.now() + DEFAULT_TOKEN_TTL_MS;
+  cachedClerkToken = { token, expiresAt };
+};
+
+const invalidateCachedClerkToken = () => {
+  cachedClerkToken = null;
+  inflightTokenPromise = null;
+};
+
+const cloneHeaders = (headers?: HeadersInit): Headers | undefined => {
+  if (!headers) {
+    return undefined;
+  }
+
+  return new Headers(headers);
+};
+
+const cloneRequestInit = (init?: RequestInit): RequestInit => {
+  if (!init) {
+    return {};
+  }
+
+  const cloned: RequestInit = { ...init };
+  cloned.headers = cloneHeaders(init.headers);
+  return cloned;
+};
+
+type GetTokenFn = ClerkSessionLike['getToken'];
+
+const requestClerkToken = async (getToken: GetTokenFn): Promise<string | null> => {
+  const cachedToken = getCachedClerkToken();
+  if (cachedToken) {
+    return cachedToken;
+  }
+
+  if (!inflightTokenPromise) {
+    inflightTokenPromise = getToken().then(token => {
+      rememberClerkToken(token);
+      inflightTokenPromise = null;
+      return token;
+    }).catch(error => {
+      inflightTokenPromise = null;
+      throw error;
+    });
+  }
+
+  return inflightTokenPromise;
+};
+
 async function withClerkAuthorization(init?: RequestInit): Promise<RequestInit> {
-  const baseInit: RequestInit = init ? { ...init } : {};
+  const baseInit = cloneRequestInit(init);
 
   if (typeof window === 'undefined') {
     return baseInit;
@@ -183,7 +342,7 @@ async function withClerkAuthorization(init?: RequestInit): Promise<RequestInit> 
   }
 
   try {
-    const token = await getToken();
+    const token = await requestClerkToken(getToken);
 
     if (!token) {
       return baseInit;
@@ -339,38 +498,70 @@ async function executeFetch(url: string, baseUrl: string, init?: RequestInit) {
 
 export async function apiFetch(path: string, init?: RequestInit) {
   const baseUrls = resolveBaseUrls();
-  const requestInit = await withClerkAuthorization(init);
-  const method = requestInit.method?.toUpperCase?.() ?? 'GET';
-  const attempts = buildBaseUrlAttempts(method, path, baseUrls);
-
+  const baseInit = cloneRequestInit(init);
   let lastError: unknown = null;
 
-  for (let index = 0; index < attempts.length; index += 1) {
-    const baseUrl = attempts[index];
-    const url = buildUrl(path, baseUrl);
+  for (let authAttempt = 0; authAttempt < 2; authAttempt += 1) {
+    const requestInit = await withClerkAuthorization(baseInit);
+    const method = requestInit.method?.toUpperCase?.() ?? 'GET';
+    const attempts = buildBaseUrlAttempts(method, path, baseUrls);
+    const hasAuthorizationHeader = Boolean(getAuthorizationHeader(requestInit.headers));
+    let retryWithFreshToken = false;
 
-    try {
-      const response = await executeFetch(url, baseUrl, requestInit);
+    for (let index = 0; index < attempts.length; index += 1) {
+      const baseUrl = attempts[index];
+      const url = buildUrl(path, baseUrl);
 
-      const nextBaseUrl = attempts[index + 1];
+      try {
+        const response = await executeFetch(url, baseUrl, requestInit);
+        const status = response.status;
+        const isAuthorizationFailure = status === 401 || status === 403;
 
-      if (shouldRetryWithNextBase(response, url, method, baseUrl, nextBaseUrl, baseUrls)) {
-        const responseBody = response.body;
+        if (isAuthorizationFailure) {
+          if (hasAuthorizationHeader && authAttempt === 0) {
+            const responseBody = response.body;
 
-        if (responseBody && typeof responseBody.cancel === 'function') {
-          try {
-            await responseBody.cancel();
-          } catch {
-            // Ignore cancellation errors to keep retrying the request.
+            if (responseBody && typeof responseBody.cancel === 'function') {
+              try {
+                await responseBody.cancel();
+              } catch {
+                // Ignore cancellation errors and retry with a fresh token.
+              }
+            }
+
+            invalidateCachedClerkToken();
+            retryWithFreshToken = true;
+            lastError = null;
+            break;
           }
+
+          return response;
         }
 
-        continue;
-      }
+        const nextBaseUrl = attempts[index + 1];
 
-      return response;
-    } catch (error) {
-      lastError = error;
+        if (shouldRetryWithNextBase(response, url, method, baseUrl, nextBaseUrl, baseUrls)) {
+          const responseBody = response.body;
+
+          if (responseBody && typeof responseBody.cancel === 'function') {
+            try {
+              await responseBody.cancel();
+            } catch {
+              // Ignore cancellation errors to keep retrying the request.
+            }
+          }
+
+          continue;
+        }
+
+        return response;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (!retryWithFreshToken) {
+      break;
     }
   }
 
