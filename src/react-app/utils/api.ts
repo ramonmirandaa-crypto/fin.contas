@@ -76,41 +76,6 @@ const isSameOriginBaseUrl = (value: string): boolean => {
   }
 };
 
-const normalizePathForOrigin = (value: string): string => {
-  if (!value) {
-    return '/';
-  }
-
-  if (/^https?:\/\//i.test(value)) {
-    try {
-      const url = new URL(value);
-      return url.pathname || '/';
-    } catch {
-      return '/';
-    }
-  }
-
-  const normalizedPath = value.startsWith('/') ? value : `/${value}`;
-  return normalizedPath || '/';
-};
-
-const isSameOriginBaseUrl = (value: string): boolean => {
-  if (typeof window === 'undefined') {
-    return false;
-  }
-
-  if (!value) {
-    return true;
-  }
-
-  try {
-    const candidate = new URL(value, window.location.origin);
-    return candidate.origin === window.location.origin;
-  } catch {
-    return false;
-  }
-};
-
 const explicitBaseUrl = ensureScheme(sanitizedBaseUrl);
 
 type BaseUrlResolution = {
@@ -304,7 +269,8 @@ function shouldRetryWithNextBase(
   attemptedUrl: string,
   method: string,
   attemptedBaseUrl: string,
-  nextBaseUrl?: string,
+  nextBaseUrl: string | undefined,
+  baseUrls: BaseUrlResolution,
 ) {
   if (!nextBaseUrl || nextBaseUrl === attemptedBaseUrl) {
     return false;
@@ -321,23 +287,27 @@ function shouldRetryWithNextBase(
   const resolvedUrl = resolveAttemptedUrl(attemptedUrl);
 
   if (!resolvedUrl.startsWith(window.location.origin)) {
-    return '';
+    return false;
   }
+
+  const { hostFallbackBaseUrl, secondaryBaseUrl } = baseUrls;
 
   if (!secondaryBaseUrl && (!hostFallbackBaseUrl || hostFallbackBaseUrl === attemptedBaseUrl)) {
-    return '';
+    return false;
   }
 
-  if (response.status !== 404 && response.status !== 405) {
-    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+  if (response.status === 404 || response.status === 405) {
+    return true;
+  }
 
-    if (!contentType.includes('text/html')) {
-      return '';
-    }
+  const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
 
-    if (!resolvedUrl.includes('/api/') && method === 'GET') {
-      return '';
-    }
+  if (!contentType.includes('text/html')) {
+    return false;
+  }
+
+  if (!resolvedUrl.includes('/api/') && method === 'GET') {
+    return false;
   }
 
   const normalizedPath = normalizePathForOrigin(attemptedUrl);
@@ -384,7 +354,7 @@ export async function apiFetch(path: string, init?: RequestInit) {
 
       const nextBaseUrl = attempts[index + 1];
 
-      if (shouldRetryWithNextBase(response, url, method, baseUrl, nextBaseUrl)) {
+      if (shouldRetryWithNextBase(response, url, method, baseUrl, nextBaseUrl, baseUrls)) {
         const responseBody = response.body;
 
         if (responseBody && typeof responseBody.cancel === 'function') {
