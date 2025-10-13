@@ -195,6 +195,18 @@ const MIGRATIONS: readonly Migration[] = (() => {
   return normalized;
 })();
 
+type Migration = {
+  id: string;
+  statements: readonly string[];
+};
+
+const MIGRATIONS: readonly Migration[] = [
+  {
+    id: '0001_initial_schema',
+    statements: splitSqlStatements(INITIAL_SCHEMA_SQL),
+  },
+];
+
 let schemaInitPromise: Promise<void> | null = null;
 
 const runStatement = async (db: D1Database, statement: string) => {
