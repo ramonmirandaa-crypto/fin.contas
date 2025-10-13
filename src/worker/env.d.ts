@@ -1,20 +1,20 @@
-interface D1PreparedStatement {
-  bind(...values: unknown[]): D1PreparedStatement;
-  first<T = unknown>(options?: unknown): Promise<T | null>;
-  all<T = unknown>(options?: unknown): Promise<{ results: T[] }>;
-  raw<T = unknown>(): Promise<T[]>;
+import type {
+  D1Database as CloudflareD1Database,
+  D1PreparedStatement as CloudflareD1PreparedStatement,
+} from '@cloudflare/workers-types';
+
+declare global {
+  interface D1PreparedStatement extends CloudflareD1PreparedStatement {}
+
+  interface D1Database extends CloudflareD1Database {}
+
+  interface Env {
+    DB: D1Database;
+    OPENAI_API_KEY: string;
+    CLERK_SECRET_KEY: string;
+    PLUGGY_CLIENT_ID: string;
+    PLUGGY_CLIENT_SECRET: string;
+  }
 }
 
-interface D1Database {
-  prepare(query: string): D1PreparedStatement;
-  batch?<T = unknown>(statements: D1PreparedStatement[]): Promise<T[]>;
-  dump?(): Promise<ArrayBuffer>;
-}
-
-interface Env {
-  DB: D1Database;
-  OPENAI_API_KEY: string;
-  CLERK_SECRET_KEY: string;
-  PLUGGY_CLIENT_ID: string;
-  PLUGGY_CLIENT_SECRET: string;
-}
+export {};
