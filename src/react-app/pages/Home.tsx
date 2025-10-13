@@ -762,7 +762,7 @@ export default function Home() {
           Cadastre lançamentos, acompanhe cartões e conecte suas contas em minutos.
         </p>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 lg:hidden">
         <button
           type="button"
           onClick={handleRefreshFinanceSummary}
@@ -1267,13 +1267,83 @@ export default function Home() {
     },
   ] as const;
 
+  const desktopNavItems = bottomNavItems.filter(item => !item.accent);
+
+  const desktopNavigation = (
+    <nav className="sticky top-0 z-40 hidden border-b border-slate-200 bg-white/80 backdrop-blur lg:block">
+      <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-6 px-4 py-4 sm:px-6 lg:px-8 xl:px-12">
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-600">
+            <Wallet className="h-6 w-6" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-emerald-600">Dashboard</p>
+            <p className="text-lg font-semibold text-slate-900">Financeiro</p>
+          </div>
+        </div>
+
+        <div className="flex flex-1 justify-center">
+          <div className="flex items-center gap-1 rounded-full bg-slate-100 p-1">
+            {desktopNavItems.map(item => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={item.onClick}
+                  className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    item.active ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-600 hover:text-emerald-600'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => handleOpenOverlay('expense-tracker')}
+            className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-emerald-600"
+          >
+            <Plus className="h-4 w-4" />
+            Novo lançamento
+          </button>
+          <button
+            type="button"
+            onClick={handleRefreshFinanceSummary}
+            className="inline-flex items-center gap-2 rounded-full border border-emerald-100 px-4 py-2 text-sm font-semibold text-emerald-600 transition hover:border-emerald-200 hover:text-emerald-700"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Atualizar insights
+          </button>
+          <button
+            type="button"
+            onClick={() => handleOpenOverlay('analytics')}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 text-slate-600 transition hover:border-emerald-200 hover:text-emerald-600"
+            aria-label="Notificações e gráficos"
+          >
+            <Bell className="h-4 w-4" />
+          </button>
+          <div className="hidden lg:block">
+            <AuthButton />
+          </div>
+        </div>
+      </div>
+    </nav>
+  );
+
   return (
     <div className="relative min-h-screen bg-slate-50 pb-24 text-slate-900">
+      {desktopNavigation}
       <main className="mx-auto min-h-screen w-full max-w-6xl px-4 pb-32 pt-12 sm:px-6 lg:px-8 xl:px-12">
         {activePrimaryView === 'home' ? homeView : reportsView}
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
+      <nav className="fixed bottom-0 left-0 right-0 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur lg:hidden">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-2 sm:px-2 lg:px-4">
           {bottomNavItems.map(item => {
             const Icon = item.icon;
