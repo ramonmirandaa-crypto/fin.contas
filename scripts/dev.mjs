@@ -3,16 +3,26 @@ import { access } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
-const viteBinary = path.join(projectRoot, 'node_modules', 'vite', 'bin', 'vite.js');
+const require = createRequire(import.meta.url);
 
-async function ensureViteBinary() {
+async function resolveViteBinary({ attemptedInstall = false } = {}) {
   try {
-    await access(viteBinary, constants.F_OK);
-    return;
-  } catch {
+    const vitePkgPath = require.resolve('vite/package.json');
+    const resolvedPath = path.join(path.dirname(vitePkgPath), 'bin', 'vite.js');
+    await access(resolvedPath, constants.F_OK);
+    return resolvedPath;
+  } catch (error) {
+    if (attemptedInstall) {
+      throw new Error(
+        'Vite binary is still missing after attempting to restore dependencies. Check the installation logs for details.',
+        { cause: error },
+      );
+    }
+
     console.warn('[dev] Vite binary not found. Running "npm install" to restore dependencies...');
 
     await new Promise((resolve, reject) => {
@@ -33,24 +43,15 @@ async function ensureViteBinary() {
         }
       });
 
-      install.on('error', (error) => {
-        reject(error);
-      });
+      install.on('error', reject);
     });
 
-    try {
-      await access(viteBinary, constants.F_OK);
-    } catch (error) {
-      throw new Error(
-        'Vite binary is still missing after running "npm install". Check the installation logs for details.',
-        { cause: error },
-      );
-    }
+    return resolveViteBinary({ attemptedInstall: true });
   }
 }
 
 async function runVite() {
-  await ensureViteBinary();
+  const viteBinary = await resolveViteBinary();
 
   const viteProcess = spawn(process.execPath, [viteBinary, ...process.argv.slice(2)], {
     cwd: projectRoot,
