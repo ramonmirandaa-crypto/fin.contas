@@ -17,7 +17,12 @@ export default defineConfig(({ mode }) => {
         env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || resolvedPublishableKey,
       ),
     },
-    plugins: [react(), cloudflare()],
+    plugins: [
+      react(),
+      cloudflare({
+        inspectorPort: false,
+      }),
+    ],
     server: {
       allowedHosts: true,
     },
