@@ -35,22 +35,23 @@ Quando a aplicação é servida a partir do domínio público (`fincontas.ramonm
 
 ### Prisma tooling
 
-This project uses Prisma with a SQLite datasource stored under `prisma/dev.db`. To set it up locally:
+O projeto utiliza Prisma com PostgreSQL (testado com `postgres:15`). Para preparar o ambiente local ou o Dockploy:
 
-1. Copy the environment template and adjust if needed:
+1. Copie o arquivo de variáveis e ajuste o `DATABASE_URL` conforme o host do Postgres:
    ```bash
    cp .env.example .env
    ```
-2. Run database migrations (the `PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1` flag helps when engine checksums are unavailable):
+2. Se estiver utilizando Docker localmente, suba um contêiner rápido de Postgres 15:
    ```bash
-   PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1 npx prisma migrate dev
+   docker run --name fincontas-db -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=fincontas -p 5432:5432 -d postgres:15
    ```
-3. Regenerate the Prisma client whenever the schema changes:
+3. Execute as migrations e gere o client do Prisma:
    ```bash
-   PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1 npx prisma generate
+   npx prisma migrate dev
+   npx prisma generate
    ```
 
-> **Produção:** ao apontar `DATABASE_URL` para outro provedor (ex.: PostgreSQL no Dockploy), utilize `npx prisma migrate deploy` para aplicar o esquema no banco remoto.
+> **Produção:** antes de iniciar a aplicação, execute `npx prisma migrate deploy` apontando para o banco Postgres configurado no Dockploy (ou outro provedor gerenciado) para garantir que o esquema esteja atualizado.
 
 ### Deploy no Dockploy
 

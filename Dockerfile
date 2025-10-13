@@ -23,4 +23,4 @@ COPY --from=build /app/scripts ./scripts
 RUN chown -R node:node /app
 USER node
 EXPOSE 4173
-CMD ["sh", "-c", "export NODE_ENV=${NODE_ENV:-production} && node scripts/preview.js"]
+CMD ["sh", "-c", "export NODE_ENV=${NODE_ENV:-production} && npx prisma migrate deploy && node scripts/preview.js"]
