@@ -141,7 +141,6 @@ const buildBaseUrlAttempts = (method: string, path: string, baseUrls: BaseUrlRes
   const { explicitBaseUrl, hostFallbackBaseUrls } = baseUrls;
   const preferHostFallback =
     hostFallbackBaseUrls.length > 0 &&
-    (!explicitBaseUrl || isSameOriginBaseUrl(explicitBaseUrl)) &&
     (isMutatingMethod(method) || normalizedPath.startsWith('/api/'));
 
   const addHostFallbacks = () => {
@@ -509,7 +508,7 @@ function shouldRetryWithNextBase(
       return false;
     }
 
-    if (status === 404 || status === 405) {
+    if ((status >= 300 && status <= 399) || status === 404 || status === 405) {
       return true;
     }
 
@@ -532,7 +531,13 @@ function shouldRetryWithNextBase(
     return isMutatingMethod(method);
   }
 
-  if (status === 403 || status === 404 || status === 405 || (status >= 500 && status <= 599)) {
+  if (
+    (status >= 300 && status <= 399) ||
+    status === 403 ||
+    status === 404 ||
+    status === 405 ||
+    (status >= 500 && status <= 599)
+  ) {
     return true;
   }
 
