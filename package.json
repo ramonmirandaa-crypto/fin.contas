@@ -48,7 +48,7 @@
     "postbuild": "node scripts/postbuild.js",
     "cf-typegen": "wrangler types",
     "check": "tsc && vite build && wrangler deploy --dry-run",
-    "dev": "vite",
+    "dev": "node scripts/dev.mjs",
     "lint": "eslint .",
     "preview": "node scripts/preview.js"
   }
