@@ -3,7 +3,6 @@ import { cors } from 'hono/cors';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { createClerkClient, type ClerkClient } from '@clerk/backend';
-import prisma from './prismaClient';
 import { PluggyClient, mapPluggyCategory } from './pluggy-improved';
 
 type TransactionType = 'income' | 'expense' | 'transfer';
@@ -39,427 +38,18 @@ interface Env {
 
 type AuthRequestState = Awaited<ReturnType<ClerkClient['authenticateRequest']>>;
 
+type D1RunResult = {
+  success: boolean;
+  error?: string;
+  meta?: {
+    changes?: number;
+    last_row_id?: number;
+  };
+};
+
 const app = new Hono<{ Bindings: Env; Variables: { auth: AuthRequestState; userId: string } }>();
 
 const clerkClientCache = new Map<string, ReturnType<typeof createClerkClient>>();
-
-let schemaInitializationPromise: Promise<void> | null = null;
-
-const ensureDatabaseSchema = (db: D1Database) => {
-  if (!schemaInitializationPromise) {
-    schemaInitializationPromise = (async () => {
-      const statements = [
-        `PRAGMA foreign_keys = ON`,
-        `CREATE TABLE IF NOT EXISTS accounts (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id TEXT NOT NULL,
-          pluggy_account_id TEXT,
-          pluggy_item_id TEXT,
-          name TEXT NOT NULL,
-          account_type TEXT NOT NULL,
-          account_subtype TEXT,
-          institution_name TEXT,
-          balance DECIMAL(18,2) NOT NULL DEFAULT 0,
-          currency_code TEXT NOT NULL DEFAULT 'BRL',
-          is_active INTEGER NOT NULL DEFAULT 1,
-          sync_enabled INTEGER NOT NULL DEFAULT 1,
-          last_sync_at DATETIME,
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          marketing_name TEXT,
-          number TEXT,
-          owner TEXT,
-          tax_number TEXT,
-          status TEXT,
-          category TEXT,
-          sub_category TEXT,
-          pluggy_created_at DATETIME,
-          pluggy_updated_at DATETIME,
-          pluggy_last_updated_at DATETIME,
-          transfer_number TEXT,
-          closing_balance DECIMAL(18,2),
-          automatically_invested_balance DECIMAL(18,2),
-          overdraft_contracted_limit DECIMAL(18,2),
-          overdraft_used_limit DECIMAL(18,2),
-          unarranged_overdraft_amount DECIMAL(18,2),
-          branch_code TEXT,
-          account_digit TEXT,
-          compe_code TEXT,
-          credit_level TEXT,
-          credit_brand TEXT,
-          balance_close_date DATETIME,
-          balance_due_date DATETIME,
-          minimum_payment DECIMAL(18,2),
-          credit_limit DECIMAL(18,2),
-          available_credit_limit DECIMAL(18,2),
-          is_limit_flexible INTEGER,
-          total_installment_balance DECIMAL(18,2),
-          interest_rate DECIMAL(10,4),
-          fine_rate DECIMAL(10,4),
-          annual_fee DECIMAL(18,2),
-          card_network TEXT,
-          card_type TEXT,
-          contract_number TEXT,
-          principal_amount DECIMAL(18,2),
-          outstanding_balance DECIMAL(18,2),
-          loan_interest_rate DECIMAL(10,4),
-          installment_amount DECIMAL(18,2),
-          installment_frequency TEXT,
-          remaining_installments INTEGER,
-          total_installments INTEGER,
-          due_date DATETIME,
-          maturity_date DATETIME,
-          origination_date DATETIME,
-          product_name TEXT,
-          investment_type TEXT,
-          portfolio_value DECIMAL(18,2),
-          net_worth DECIMAL(18,2),
-          gross_worth DECIMAL(18,2),
-          last_movement_date DATETIME,
-          investment_rate DECIMAL(10,4),
-          rate_type TEXT,
-          indexer TEXT,
-          investment_maturity_date DATETIME,
-          isin TEXT,
-          quantity DECIMAL(18,6),
-          unit_price DECIMAL(18,6)
-        )`,
-        `CREATE INDEX IF NOT EXISTS idx_accounts_user ON accounts(user_id)`,
-        `CREATE TRIGGER IF NOT EXISTS accounts_updated_at
-          AFTER UPDATE ON accounts
-          FOR EACH ROW
-          BEGIN
-            UPDATE accounts SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-          END`,
-        `CREATE TABLE IF NOT EXISTS transactions (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id TEXT NOT NULL,
-          account_id INTEGER,
-          pluggy_transaction_id TEXT,
-          transaction_hash TEXT,
-          amount DECIMAL(18,2) NOT NULL,
-          description TEXT NOT NULL,
-          category TEXT NOT NULL,
-          transaction_type TEXT NOT NULL DEFAULT 'expense',
-          date DATETIME NOT NULL,
-          balance_after DECIMAL(18,2),
-          merchant_name TEXT,
-          merchant_category TEXT,
-          payment_method TEXT,
-          tags TEXT,
-          notes TEXT,
-          reconciled INTEGER NOT NULL DEFAULT 0,
-          status TEXT NOT NULL DEFAULT 'completed',
-          provider_code TEXT,
-          operation_type TEXT,
-          pix_data TEXT,
-          installment_data TEXT,
-          location_data TEXT,
-          foreign_exchange_data TEXT,
-          fees_data TEXT,
-          processed_at DATETIME,
-          is_synced_from_bank INTEGER NOT NULL DEFAULT 0,
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE SET NULL ON UPDATE CASCADE
-        )`,
-        `CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id)`,
-        `CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id)`,
-        `CREATE INDEX IF NOT EXISTS idx_transactions_user_date ON transactions(user_id, date)`,
-        `CREATE TRIGGER IF NOT EXISTS transactions_updated_at
-          AFTER UPDATE ON transactions
-          FOR EACH ROW
-          BEGIN
-            UPDATE transactions SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-          END`,
-        `CREATE TABLE IF NOT EXISTS budgets (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id TEXT NOT NULL,
-          name TEXT NOT NULL,
-          category TEXT NOT NULL,
-          amount DECIMAL(18,2) NOT NULL,
-          spent DECIMAL(18,2) NOT NULL DEFAULT 0,
-          period_start DATETIME NOT NULL,
-          period_end DATETIME NOT NULL,
-          status TEXT NOT NULL DEFAULT 'active',
-          notes TEXT,
-          account_id INTEGER,
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE SET NULL ON UPDATE CASCADE
-        )`,
-        `CREATE INDEX IF NOT EXISTS idx_budgets_user ON budgets(user_id)`,
-        `CREATE INDEX IF NOT EXISTS idx_budgets_user_category ON budgets(user_id, category)`,
-        `CREATE TRIGGER IF NOT EXISTS budgets_updated_at
-          AFTER UPDATE ON budgets
-          FOR EACH ROW
-          BEGIN
-            UPDATE budgets SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-          END`,
-        `CREATE TABLE IF NOT EXISTS goals (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL,
-          title TEXT NOT NULL,
-          description TEXT,
-          target_amount DECIMAL(18,2) NOT NULL,
-          current_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
-          target_date DATETIME NOT NULL,
-          category TEXT NOT NULL DEFAULT 'savings',
-          status TEXT NOT NULL DEFAULT 'active',
-          priority TEXT NOT NULL DEFAULT 'medium',
-          account_id INTEGER,
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE SET NULL ON UPDATE CASCADE
-        )`,
-        `CREATE INDEX IF NOT EXISTS idx_goals_user ON goals(user_id)`,
-        `CREATE TRIGGER IF NOT EXISTS goals_updated_at
-          AFTER UPDATE ON goals
-          FOR EACH ROW
-          BEGIN
-            UPDATE goals SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-          END`,
-        `CREATE TABLE IF NOT EXISTS credit_cards (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id TEXT NOT NULL,
-          linked_account_id INTEGER,
-          name TEXT NOT NULL,
-          credit_limit DECIMAL(18,2) NOT NULL DEFAULT 0,
-          current_balance DECIMAL(18,2) NOT NULL DEFAULT 0,
-          due_day INTEGER NOT NULL DEFAULT 1,
-          closing_day INTEGER,
-          issuer TEXT,
-          brand TEXT,
-          is_virtual INTEGER DEFAULT 0,
-          status TEXT,
-          last_synced_at DATETIME,
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY(linked_account_id) REFERENCES accounts(id) ON DELETE SET NULL ON UPDATE CASCADE
-        )`,
-        `CREATE INDEX IF NOT EXISTS idx_credit_cards_user ON credit_cards(user_id)`,
-        `CREATE TRIGGER IF NOT EXISTS credit_cards_updated_at
-          AFTER UPDATE ON credit_cards
-          FOR EACH ROW
-          BEGIN
-            UPDATE credit_cards SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-          END`,
-        `CREATE TABLE IF NOT EXISTS investments (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id TEXT NOT NULL,
-          account_id INTEGER,
-          name TEXT NOT NULL,
-          type TEXT NOT NULL,
-          amount DECIMAL(18,2) NOT NULL,
-          purchase_date DATETIME,
-          current_value DECIMAL(18,2),
-          expected_return_rate DECIMAL(10,4),
-          risk_level TEXT,
-          institution_name TEXT,
-          notes TEXT,
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE SET NULL ON UPDATE CASCADE
-        )`,
-        `CREATE INDEX IF NOT EXISTS idx_investments_user ON investments(user_id)`,
-        `CREATE TRIGGER IF NOT EXISTS investments_updated_at
-          AFTER UPDATE ON investments
-          FOR EACH ROW
-          BEGIN
-            UPDATE investments SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-          END`,
-        `CREATE TABLE IF NOT EXISTS loans (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id TEXT NOT NULL,
-          account_id INTEGER,
-          name TEXT NOT NULL,
-          principal_amount DECIMAL(18,2) NOT NULL,
-          interest_rate DECIMAL(10,4) NOT NULL,
-          start_date DATETIME NOT NULL,
-          end_date DATETIME,
-          monthly_payment DECIMAL(18,2) NOT NULL,
-          remaining_balance DECIMAL(18,2) NOT NULL,
-          lender TEXT,
-          status TEXT,
-          notes TEXT,
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE SET NULL ON UPDATE CASCADE
-        )`,
-        `CREATE INDEX IF NOT EXISTS idx_loans_user ON loans(user_id)`,
-        `CREATE TRIGGER IF NOT EXISTS loans_updated_at
-          AFTER UPDATE ON loans
-          FOR EACH ROW
-          BEGIN
-            UPDATE loans SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-          END`,
-        `CREATE TABLE IF NOT EXISTS credit_card_bills (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id TEXT NOT NULL,
-          account_id INTEGER,
-          pluggy_bill_id TEXT,
-          closing_date DATETIME,
-          due_date DATETIME,
-          total_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
-          minimum_payment DECIMAL(18,2) NOT NULL DEFAULT 0,
-          previous_bill_balance DECIMAL(18,2) NOT NULL DEFAULT 0,
-          paid_amount DECIMAL(18,2) NOT NULL DEFAULT 0,
-          payment_date DATETIME,
-          is_fully_paid INTEGER NOT NULL DEFAULT 0,
-          interest_rate DECIMAL(10,4),
-          late_fee DECIMAL(18,2) NOT NULL DEFAULT 0,
-          annual_fee DECIMAL(18,2) NOT NULL DEFAULT 0,
-          international_fee DECIMAL(18,2) NOT NULL DEFAULT 0,
-          bill_status TEXT,
-          currency_code TEXT NOT NULL DEFAULT 'BRL',
-          bill_month INTEGER,
-          bill_year INTEGER,
-          pluggy_created_at DATETIME,
-          pluggy_updated_at DATETIME,
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE SET NULL ON UPDATE CASCADE
-        )`,
-        `CREATE INDEX IF NOT EXISTS idx_credit_card_bills_user ON credit_card_bills(user_id)`,
-        `CREATE TRIGGER IF NOT EXISTS credit_card_bills_updated_at
-          AFTER UPDATE ON credit_card_bills
-          FOR EACH ROW
-          BEGIN
-            UPDATE credit_card_bills SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-          END`,
-        `CREATE TABLE IF NOT EXISTS transaction_categories (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id TEXT NOT NULL,
-          name TEXT NOT NULL,
-          color TEXT,
-          description TEXT,
-          keywords TEXT,
-          parent_id INTEGER,
-          is_default INTEGER NOT NULL DEFAULT 0,
-          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )`,
-        `CREATE INDEX IF NOT EXISTS idx_transaction_categories_user ON transaction_categories(user_id)`,
-        `CREATE TRIGGER IF NOT EXISTS transaction_categories_updated_at
-          AFTER UPDATE ON transaction_categories
-          FOR EACH ROW
-          BEGIN
-            UPDATE transaction_categories SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-          END`,
-        `CREATE TABLE IF NOT EXISTS expenses (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id TEXT NOT NULL,
-          amount DECIMAL(18,2) NOT NULL,
-          description TEXT NOT NULL,
-          category TEXT NOT NULL,
-          date DATETIME NOT NULL,
-          pluggy_transaction_id TEXT,
-          is_synced_from_bank INTEGER NOT NULL DEFAULT 0,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          UNIQUE(user_id, pluggy_transaction_id)
-        )`,
-        `CREATE INDEX IF NOT EXISTS idx_expenses_user ON expenses(user_id)`,
-        `CREATE INDEX IF NOT EXISTS idx_expenses_user_date ON expenses(user_id, date)`,
-        `CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(user_id, category)`,
-        `CREATE TRIGGER IF NOT EXISTS expenses_updated_at
-          AFTER UPDATE ON expenses
-          FOR EACH ROW
-          BEGIN
-            UPDATE expenses SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-          END`,
-        `CREATE TABLE IF NOT EXISTS user_configs (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id TEXT NOT NULL,
-          config_key TEXT NOT NULL,
-          config_value TEXT NOT NULL,
-          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-          updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )`,
-        `CREATE UNIQUE INDEX IF NOT EXISTS idx_user_configs_user_key ON user_configs(user_id, config_key)`,
-        `CREATE TABLE IF NOT EXISTS pluggy_connections (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id TEXT NOT NULL,
-          pluggy_item_id TEXT NOT NULL,
-          institution_name TEXT,
-          connection_status TEXT,
-          last_sync_at TEXT,
-          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-          updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-          UNIQUE(user_id, pluggy_item_id)
-        )`,
-        `CREATE INDEX IF NOT EXISTS idx_pluggy_connections_user ON pluggy_connections(user_id)`,
-        `CREATE TABLE IF NOT EXISTS webhook_configs (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id TEXT NOT NULL UNIQUE,
-          webhook_url TEXT NOT NULL,
-          events TEXT,
-          is_active INTEGER DEFAULT 1,
-          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-          updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )`,
-        `CREATE TABLE IF NOT EXISTS webhook_logs (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          webhook_id TEXT NOT NULL,
-          success INTEGER NOT NULL,
-          error_message TEXT,
-          attempt_at TEXT,
-          created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )`,
-        `CREATE INDEX IF NOT EXISTS idx_webhook_logs_webhook_id ON webhook_logs(webhook_id)`,
-        `CREATE INDEX IF NOT EXISTS idx_webhook_logs_created_at ON webhook_logs(created_at)`
-      ];
-
-      for (const statement of statements) {
-        await db.prepare(statement).run();
-      }
-
-      const addOptionalColumn = async (table: string, column: string, definition: string) => {
-        try {
-          await db.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run();
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          if (!message.includes('duplicate column name')) {
-            throw error;
-          }
-        }
-      };
-
-      await addOptionalColumn('credit_cards', 'linked_account_id', 'INTEGER');
-      await addOptionalColumn('credit_cards', 'last_synced_at', 'DATETIME');
-      await addOptionalColumn('credit_cards', 'status', 'TEXT');
-      await addOptionalColumn('credit_cards', 'issuer', 'TEXT');
-      await addOptionalColumn('credit_cards', 'brand', 'TEXT');
-      await addOptionalColumn('credit_cards', 'closing_day', 'INTEGER');
-
-      await addOptionalColumn('investments', 'expected_return_rate', 'DECIMAL(10,4)');
-      await addOptionalColumn('investments', 'risk_level', 'TEXT');
-      await addOptionalColumn('investments', 'institution_name', 'TEXT');
-      await addOptionalColumn('investments', 'notes', 'TEXT');
-
-      await addOptionalColumn('loans', 'lender', 'TEXT');
-      await addOptionalColumn('loans', 'status', 'TEXT');
-      await addOptionalColumn('loans', 'notes', 'TEXT');
-
-      await addOptionalColumn('pluggy_connections', 'client_user_id', 'TEXT');
-      await addOptionalColumn('pluggy_connections', 'connector_id', 'TEXT');
-      await addOptionalColumn('pluggy_connections', 'connector_name', 'TEXT');
-      await addOptionalColumn('pluggy_connections', 'connector_image_url', 'TEXT');
-      await addOptionalColumn('pluggy_connections', 'connector_primary_color', 'TEXT');
-      await addOptionalColumn('pluggy_connections', 'org_id', 'TEXT');
-      await addOptionalColumn('pluggy_connections', 'org_name', 'TEXT');
-      await addOptionalColumn('pluggy_connections', 'org_domain', 'TEXT');
-      await addOptionalColumn('pluggy_connections', 'status_detail', 'TEXT');
-      await addOptionalColumn('pluggy_connections', 'execution_status', 'TEXT');
-      await addOptionalColumn('pluggy_connections', 'last_sync_message', 'TEXT');
-    })().catch(error => {
-      schemaInitializationPromise = null;
-      throw error;
-    });
-  }
-
-  return schemaInitializationPromise;
-};
 
 const getClerkClient = (env: Env) => {
   const secretKey = env.CLERK_SECRET_KEY;
@@ -477,12 +67,6 @@ const getClerkClient = (env: Env) => {
   clerkClientCache.set(secretKey, client);
   return client;
 };
-
-// Ensure auxiliary tables exist before handling requests
-app.use('*', async (c, next) => {
-  await ensureDatabaseSchema(c.env.DB);
-  await next();
-});
 
 // Enhanced CORS configuration
 app.use('*', cors({
@@ -1023,13 +607,73 @@ app.post('/api/pluggy/transactions', authMiddleware, async (c) => {
   }
 });
 
-const normalizePrismaValue = (value: unknown): any => {
+const toBoolean = (value: unknown): boolean => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'number') {
+    return value !== 0;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return normalized === '1' || normalized === 'true';
+  }
+
+  if (typeof value === 'bigint') {
+    return value !== BigInt(0);
+  }
+
+  return Boolean(value);
+};
+
+const toNumber = (value: unknown): number | unknown => {
+  if (typeof value === 'number') {
+    return value;
+  }
+
+  if (typeof value === 'bigint') {
+    return Number(value);
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (!Number.isNaN(parsed)) {
+      return parsed;
+    }
+  }
+
+  return value;
+};
+
+const resolveNumber = (value: unknown, fallback = 0): number => {
+  const converted = toNumber(value);
+  return typeof converted === 'number' && !Number.isNaN(converted) ? converted : fallback;
+};
+
+const parseDate = (value: unknown): Date | null => {
+  if (value instanceof Date) {
+    return value;
+  }
+
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+
+  return null;
+};
+
+const normalizeDbValue = (value: unknown): any => {
   if (value === null || value === undefined) {
     return value;
   }
 
   if (Array.isArray(value)) {
-    return value.map(normalizePrismaValue);
+    return value.map(normalizeDbValue);
   }
 
   if (value instanceof Date) {
@@ -1043,7 +687,7 @@ const normalizePrismaValue = (value: unknown): any => {
 
     const normalized: Record<string, unknown> = {};
     for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-      normalized[key] = normalizePrismaValue(entry);
+      normalized[key] = normalizeDbValue(entry);
     }
     return normalized;
   }
@@ -1055,23 +699,104 @@ const normalizePrismaValue = (value: unknown): any => {
   return value;
 };
 
-const withAccountMetadata = <T extends { account?: { name?: string | null; account_type?: string | null } | null }>(
-  entity: T,
-) => {
-  if (!entity || !entity.account) {
-    return entity;
+const formatTransaction = (transaction: Record<string, unknown> | null | undefined) => {
+  if (!transaction) {
+    return null;
   }
 
-  const { account, ...rest } = entity as T & { account: { name?: string | null; account_type?: string | null } };
-  return {
-    ...rest,
-    account_name: account?.name ?? null,
-    account_type: account?.account_type ?? null,
-  } as Omit<T, 'account'> & { account_name: string | null; account_type: string | null };
+  const normalized = normalizeDbValue(transaction) as Record<string, unknown>;
+
+  if ('amount' in normalized) {
+    const converted = toNumber(normalized.amount);
+    if (typeof converted === 'number') {
+      normalized.amount = converted;
+    }
+  }
+
+  if ('balance_after' in normalized) {
+    const converted = toNumber(normalized.balance_after);
+    if (typeof converted === 'number') {
+      normalized.balance_after = converted;
+    }
+  }
+
+  if ('reconciled' in normalized) {
+    normalized.reconciled = toBoolean(normalized.reconciled);
+  }
+
+  if ('is_synced_from_bank' in normalized) {
+    normalized.is_synced_from_bank = toBoolean(normalized.is_synced_from_bank);
+  }
+
+  if ('account_id' in normalized) {
+    const converted = toNumber(normalized.account_id);
+    if (typeof converted === 'number') {
+      normalized.account_id = converted;
+    }
+  }
+
+  if ('account' in normalized) {
+    const account = normalized.account as Record<string, unknown> | null | undefined;
+    normalized.account_name = account && 'name' in account ? (account.name as string | null) : null;
+    normalized.account_type = account && 'account_type' in account ? (account.account_type as string | null) : null;
+    delete normalized.account;
+  }
+
+  return normalized;
 };
 
-const formatTransaction = (transaction: unknown) =>
-  normalizePrismaValue(withAccountMetadata(transaction as Record<string, unknown>));
+const formatAccount = (account: Record<string, unknown>) => {
+  const normalized = normalizeDbValue(account) as Record<string, unknown>;
+
+  if ('id' in normalized) {
+    const converted = toNumber(normalized.id);
+    if (typeof converted === 'number') {
+      normalized.id = converted;
+    }
+  }
+
+  if ('balance' in normalized) {
+    const converted = toNumber(normalized.balance);
+    if (typeof converted === 'number') {
+      normalized.balance = converted;
+    }
+  }
+
+  if ('credit_limit' in normalized) {
+    const converted = toNumber(normalized.credit_limit);
+    if (typeof converted === 'number') {
+      normalized.credit_limit = converted;
+    }
+  }
+
+  if ('available_credit_limit' in normalized) {
+    const converted = toNumber(normalized.available_credit_limit);
+    if (typeof converted === 'number') {
+      normalized.available_credit_limit = converted;
+    }
+  }
+
+  if ('minimum_payment' in normalized) {
+    const converted = toNumber(normalized.minimum_payment);
+    if (typeof converted === 'number') {
+      normalized.minimum_payment = converted;
+    }
+  }
+
+  if ('sync_enabled' in normalized) {
+    normalized.sync_enabled = toBoolean(normalized.sync_enabled);
+  }
+
+  if ('is_active' in normalized) {
+    normalized.is_active = toBoolean(normalized.is_active);
+  }
+
+  if ('is_limit_flexible' in normalized) {
+    normalized.is_limit_flexible = toBoolean(normalized.is_limit_flexible);
+  }
+
+  return normalized;
+};
 
 const formatExpenseRecord = (expense: unknown): Record<string, unknown> | null => {
   if (!expense || typeof expense !== 'object') {
@@ -1110,23 +835,124 @@ const formatExpenseRecord = (expense: unknown): Record<string, unknown> | null =
 };
 
 const formatBudget = (budget: unknown) => {
-  const normalized = normalizePrismaValue(budget as Record<string, unknown>) as Record<string, unknown>;
+  const normalized = normalizeDbValue(budget as Record<string, unknown>) as Record<string, unknown>;
   if ('account' in normalized) {
     const account = normalized.account as Record<string, unknown> | null | undefined;
     normalized.account_name = account && 'name' in account ? (account.name as string | null) : null;
     delete normalized.account;
+  }
+
+  if ('id' in normalized) {
+    const converted = toNumber(normalized.id);
+    if (typeof converted === 'number') {
+      normalized.id = converted;
+    }
+  }
+
+  if ('account_id' in normalized) {
+    const converted = toNumber(normalized.account_id);
+    if (typeof converted === 'number') {
+      normalized.account_id = converted;
+    }
+  }
+
+  if ('amount' in normalized) {
+    const converted = toNumber(normalized.amount);
+    if (typeof converted === 'number') {
+      normalized.amount = converted;
+    }
+  }
+
+  if ('spent' in normalized) {
+    const converted = toNumber(normalized.spent);
+    if (typeof converted === 'number') {
+      normalized.spent = converted;
+    }
   }
   return normalized;
 };
 
 const formatGoal = (goal: unknown) => {
-  const normalized = normalizePrismaValue(goal as Record<string, unknown>) as Record<string, unknown>;
+  const normalized = normalizeDbValue(goal as Record<string, unknown>) as Record<string, unknown>;
   if ('account' in normalized) {
     const account = normalized.account as Record<string, unknown> | null | undefined;
     normalized.account_name = account && 'name' in account ? (account.name as string | null) : null;
     delete normalized.account;
   }
+
+  if ('target_amount' in normalized) {
+    const converted = toNumber(normalized.target_amount);
+    if (typeof converted === 'number') {
+      normalized.target_amount = converted;
+    }
+  }
+
+  if ('current_amount' in normalized) {
+    const converted = toNumber(normalized.current_amount);
+    if (typeof converted === 'number') {
+      normalized.current_amount = converted;
+    }
+  }
+
+  if ('account_id' in normalized) {
+    const converted = toNumber(normalized.account_id);
+    if (typeof converted === 'number') {
+      normalized.account_id = converted;
+    }
+  }
   return normalized;
+};
+
+const buildTransactionFilters = (where: TransactionWhere) => {
+  const clauses: string[] = ['t.user_id = ?'];
+  const params: unknown[] = [where.user_id];
+
+  if (where.account_id !== undefined) {
+    clauses.push('t.account_id = ?');
+    params.push(where.account_id);
+  }
+
+  if (where.category) {
+    clauses.push('t.category = ?');
+    params.push(where.category);
+  }
+
+  if (where.transaction_type) {
+    clauses.push('t.transaction_type = ?');
+    params.push(where.transaction_type);
+  }
+
+  if (where.description?.contains) {
+    clauses.push('LOWER(t.description) LIKE ?');
+    params.push(`%${where.description.contains.toLowerCase()}%`);
+  }
+
+  if (where.merchant_name?.contains) {
+    clauses.push('LOWER(t.merchant_name) LIKE ?');
+    params.push(`%${where.merchant_name.contains.toLowerCase()}%`);
+  }
+
+  if (where.amount?.gte !== undefined) {
+    clauses.push('t.amount >= ?');
+    params.push(where.amount.gte);
+  }
+
+  if (where.amount?.lte !== undefined) {
+    clauses.push('t.amount <= ?');
+    params.push(where.amount.lte);
+  }
+
+  if (where.date?.gte) {
+    clauses.push('t.date >= ?');
+    params.push(where.date.gte.toISOString());
+  }
+
+  if (where.date?.lte) {
+    clauses.push('t.date <= ?');
+    params.push(where.date.lte.toISOString());
+  }
+
+  return { clauses, params };
 };
 
 // ===========================================
@@ -1293,12 +1119,18 @@ app.get('/api/accounts', authMiddleware, async (c) => {
   }
 
   try {
-    const accounts = await prisma.account.findMany({
-      where: { user_id: userId },
-      orderBy: { created_at: 'desc' },
-    });
+    const stmt = c.env.DB.prepare(`
+      SELECT *
+      FROM accounts
+      WHERE user_id = ?
+      ORDER BY created_at DESC
+    `);
+    const accountsResult = await stmt.bind(userId).all();
+    const accounts = (accountsResult.results || []).map((record) =>
+      formatAccount(record as Record<string, unknown>)
+    );
 
-    return Response.json({ accounts: normalizePrismaValue(accounts) });
+    return Response.json({ accounts });
   } catch (error) {
     console.error('Error fetching accounts:', error);
     return errorResponse('Failed to fetch accounts', 500);
@@ -1328,9 +1160,14 @@ app.post('/api/accounts', authMiddleware, async (c) => {
       return errorResponse('Name and account type are required', 400);
     }
 
-    const account = await prisma.account.create({
-      data: {
-        user_id: userId,
+    const balanceValue = Number(balance);
+    if (Number.isNaN(balanceValue)) {
+      return errorResponse('Invalid balance value', 400);
+    }
+
+    const insertStmt = c.env.DB.prepare(`
+      INSERT INTO accounts (
+        user_id,
         name,
         account_type,
         account_subtype,
@@ -1338,10 +1175,45 @@ app.post('/api/accounts', authMiddleware, async (c) => {
         balance,
         sync_enabled,
         currency_code,
-      },
-    });
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    `);
 
-    return Response.json({ account: normalizePrismaValue(account) }, { status: 201 });
+    const result = (await insertStmt
+      .bind(
+        userId,
+        name,
+        account_type,
+        account_subtype ?? null,
+        institution_name ?? null,
+        balanceValue,
+        sync_enabled ? 1 : 0,
+        currency_code,
+      )
+      .run()) as D1RunResult;
+
+    if (!result.success) {
+      return errorResponse('Failed to create account', 500);
+    }
+
+    const accountId = result.meta?.last_row_id;
+    if (accountId === undefined) {
+      return errorResponse('Failed to resolve created account', 500);
+    }
+
+    const fetchStmt = c.env.DB.prepare(`
+      SELECT *
+      FROM accounts
+      WHERE id = ? AND user_id = ?
+    `);
+    const account = await fetchStmt.bind(accountId, userId).first<Record<string, unknown>>();
+
+    return Response.json(
+      { account: account ? formatAccount(account) : null },
+      { status: 201 },
+    );
   } catch (error) {
     console.error('Error creating account:', error);
     return errorResponse('Failed to create account', 500);
@@ -1363,26 +1235,76 @@ app.put('/api/accounts/:id', authMiddleware, async (c) => {
   try {
     const updates = await c.req.json();
 
-    const { count } = await prisma.account.updateMany({
-      where: { id: accountId, user_id: userId },
-      data: {
-        name: updates.name,
-        account_type: updates.account_type,
-        account_subtype: updates.account_subtype,
-        institution_name: updates.institution_name,
-        balance: typeof updates.balance === 'number' ? updates.balance : undefined,
-        sync_enabled: typeof updates.sync_enabled === 'boolean' ? updates.sync_enabled : undefined,
-        currency_code: updates.currency_code,
-        is_active: typeof updates.is_active === 'boolean' ? updates.is_active : undefined,
-      },
-    });
+    const fields: string[] = [];
+    const values: unknown[] = [];
 
-    if (count === 0) {
+    if (typeof updates.name === 'string') {
+      fields.push('name = ?');
+      values.push(updates.name);
+    }
+
+    if (typeof updates.account_type === 'string') {
+      fields.push('account_type = ?');
+      values.push(updates.account_type);
+    }
+
+    if (updates.account_subtype !== undefined) {
+      fields.push('account_subtype = ?');
+      values.push(updates.account_subtype ?? null);
+    }
+
+    if (updates.institution_name !== undefined) {
+      fields.push('institution_name = ?');
+      values.push(updates.institution_name ?? null);
+    }
+
+    if (updates.balance !== undefined) {
+      const balanceValue = Number(updates.balance);
+      if (Number.isNaN(balanceValue)) {
+        return errorResponse('Invalid balance value', 400);
+      }
+      fields.push('balance = ?');
+      values.push(balanceValue);
+    }
+
+    if (typeof updates.sync_enabled === 'boolean') {
+      fields.push('sync_enabled = ?');
+      values.push(updates.sync_enabled ? 1 : 0);
+    }
+
+    if (typeof updates.currency_code === 'string') {
+      fields.push('currency_code = ?');
+      values.push(updates.currency_code);
+    }
+
+    if (typeof updates.is_active === 'boolean') {
+      fields.push('is_active = ?');
+      values.push(updates.is_active ? 1 : 0);
+    }
+
+    if (fields.length === 0) {
+      return errorResponse('No valid fields to update', 400);
+    }
+
+    const setClause = `${fields.join(', ')}, updated_at = datetime('now')`;
+    const updateStmt = c.env.DB.prepare(
+      `UPDATE accounts SET ${setClause} WHERE id = ? AND user_id = ?`,
+    );
+    const result = (await updateStmt
+      .bind(...values, accountId, userId)
+      .run()) as D1RunResult;
+
+    const changes = Number(result.meta?.changes ?? 0);
+    if (changes === 0) {
       return errorResponse('Account not found', 404);
     }
 
-    const account = await prisma.account.findUnique({ where: { id: accountId } });
-    return Response.json({ account: normalizePrismaValue(account) });
+    const fetchStmt = c.env.DB.prepare(
+      'SELECT * FROM accounts WHERE id = ? AND user_id = ?',
+    );
+    const account = await fetchStmt.bind(accountId, userId).first<Record<string, unknown>>();
+
+    return Response.json({ account: account ? formatAccount(account) : null });
   } catch (error) {
     console.error('Error updating account:', error);
     return errorResponse('Failed to update account', 500);
@@ -1402,11 +1324,13 @@ app.delete('/api/accounts/:id', authMiddleware, async (c) => {
   }
 
   try {
-    const { count } = await prisma.account.deleteMany({
-      where: { id: accountId, user_id: userId },
-    });
+    const deleteStmt = c.env.DB.prepare(
+      'DELETE FROM accounts WHERE id = ? AND user_id = ?',
+    );
+    const result = (await deleteStmt.bind(accountId, userId).run()) as D1RunResult;
 
-    if (count === 0) {
+    const changes = Number(result.meta?.changes ?? 0);
+    if (changes === 0) {
       return errorResponse('Account not found', 404);
     }
 
@@ -1715,25 +1639,31 @@ app.get('/api/transactions', authMiddleware, async (c) => {
       where.date = dateFilter;
     }
 
-    const [transactionRecords, total] = await Promise.all([
-      prisma.transaction.findMany({
-        where,
-        include: {
-          account: {
-            select: {
-              name: true,
-              account_type: true,
-            },
-          },
-        },
-        orderBy: [{ date: 'desc' }, { created_at: 'desc' }],
-        skip,
-        take: pageSize,
-      }) as Promise<Array<Record<string, unknown>>>,
-      prisma.transaction.count({ where }) as Promise<number>,
-    ]);
+    const { clauses, params } = buildTransactionFilters(where);
+    const whereClause = clauses.join(' AND ');
 
-    const items = transactionRecords.map(transaction => formatTransaction(transaction));
+    const listStmt = c.env.DB.prepare(
+      `SELECT t.*, a.name AS account_name, a.account_type AS account_type
+       FROM transactions t
+       LEFT JOIN accounts a ON t.account_id = a.id
+       WHERE ${whereClause}
+       ORDER BY t.date DESC, t.created_at DESC
+       LIMIT ? OFFSET ?`,
+    );
+
+    const transactionsResult = await listStmt
+      .bind(...params, pageSize, skip)
+      .all<Record<string, unknown>>();
+
+    const items = (transactionsResult.results || [])
+      .map((transaction) => formatTransaction(transaction as Record<string, unknown>))
+      .filter((transaction): transaction is Record<string, unknown> => Boolean(transaction));
+
+    const countStmt = c.env.DB.prepare(
+      `SELECT COUNT(*) AS count FROM transactions t WHERE ${whereClause}`,
+    );
+    const countResult = await countStmt.bind(...params).first<{ count: unknown }>();
+    const total = resolveNumber(countResult?.count ?? 0);
 
     return Response.json({
       transactions: items,
@@ -1788,15 +1718,34 @@ app.get('/api/transactions/analytics', authMiddleware, async (c) => {
       where.date = dateFilter;
     }
 
-    const transactions = (await prisma.transaction.findMany({
-      where,
-      select: {
-        amount: true,
-        category: true,
-        merchant_name: true,
-        date: true,
-      },
-    })) as AnalyticsTransaction[];
+    const { clauses, params } = buildTransactionFilters(where);
+    const whereClause = clauses.join(' AND ');
+
+    const analyticsStmt = c.env.DB.prepare(
+      `SELECT t.amount, t.category, t.merchant_name, t.date
+       FROM transactions t
+       WHERE ${whereClause}`,
+    );
+    const analyticsResult = await analyticsStmt
+      .bind(...params)
+      .all<Record<string, unknown>>();
+
+    const transactions = (analyticsResult.results || [])
+      .map((row): AnalyticsTransaction | null => {
+        const record = row as Record<string, unknown>;
+        const parsedDate = parseDate(record.date);
+        if (!parsedDate) {
+          return null;
+        }
+
+        return {
+          amount: resolveNumber(record.amount ?? 0),
+          category: record.category as string | null,
+          merchant_name: record.merchant_name as string | null,
+          date: parsedDate,
+        };
+      })
+      .filter((entry): entry is AnalyticsTransaction => entry !== null);
 
     const totals = transactions.reduce(
       (acc, transaction) => {
@@ -1906,29 +1855,42 @@ app.post('/api/transactions/bulk', authMiddleware, async (c) => {
       return errorResponse('No valid transactions selected', 400);
     }
 
+    const placeholders = ids.map(() => '?').join(', ');
+    if (!placeholders) {
+      return errorResponse('No valid transactions selected', 400);
+    }
+
     switch (operation) {
       case 'categorize': {
         if (!opParams?.category) {
           return errorResponse('Category is required for categorize operation', 400);
         }
 
-        await prisma.transaction.updateMany({
-          where: { id: { in: ids }, user_id: userId },
-          data: { category: opParams.category },
-        });
+        const categorizeStmt = c.env.DB.prepare(
+          `UPDATE transactions
+           SET category = ?, updated_at = datetime('now')
+           WHERE user_id = ? AND id IN (${placeholders})`,
+        );
+        await categorizeStmt.bind(opParams.category, userId, ...ids).run();
         break;
       }
       case 'reconcile': {
-        await prisma.transaction.updateMany({
-          where: { id: { in: ids }, user_id: userId },
-          data: { reconciled: Boolean(opParams?.reconciled) },
-        });
+        const reconcileStmt = c.env.DB.prepare(
+          `UPDATE transactions
+           SET reconciled = ?, updated_at = datetime('now')
+           WHERE user_id = ? AND id IN (${placeholders})`,
+        );
+        await reconcileStmt
+          .bind(opParams?.reconciled ? 1 : 0, userId, ...ids)
+          .run();
         break;
       }
       case 'delete': {
-        await prisma.transaction.deleteMany({
-          where: { id: { in: ids }, user_id: userId },
-        });
+        const deleteStmt = c.env.DB.prepare(
+          `DELETE FROM transactions
+           WHERE user_id = ? AND id IN (${placeholders})`,
+        );
+        await deleteStmt.bind(userId, ...ids).run();
         break;
       }
       default:
@@ -1969,26 +1931,46 @@ app.put('/api/transactions/:id', authMiddleware, async (c) => {
       return errorResponse('No valid fields to update', 400);
     }
 
-    const result = await prisma.transaction.updateMany({
-      where: { id: transactionId, user_id: userId },
-      data,
-    });
+    const fields = Object.keys(data);
 
-    if (result.count === 0) {
+    const assignments: string[] = [];
+    const values: unknown[] = [];
+
+    for (const field of fields) {
+      assignments.push(`${field} = ?`);
+      if (field === 'reconciled') {
+        values.push(toBoolean(data[field]) ? 1 : 0);
+      } else {
+        values.push(data[field]);
+      }
+    }
+
+    const updateStmt = c.env.DB.prepare(
+      `UPDATE transactions
+       SET ${assignments.join(', ')}, updated_at = datetime('now')
+       WHERE id = ? AND user_id = ?`,
+    );
+
+    const result = (await updateStmt
+      .bind(...values, transactionId, userId)
+      .run()) as D1RunResult;
+
+    const changes = Number(result.meta?.changes ?? 0);
+    if (changes === 0) {
       return errorResponse('Transaction not found', 404);
     }
 
-    const transaction = await prisma.transaction.findUnique({
-      where: { id: transactionId },
-      include: {
-        account: {
-          select: {
-            name: true,
-            account_type: true,
-          },
-        },
-      },
-    });
+    const fetchStmt = c.env.DB.prepare(
+      `SELECT t.*, a.name AS account_name, a.account_type AS account_type
+       FROM transactions t
+       LEFT JOIN accounts a ON t.account_id = a.id
+       WHERE t.id = ? AND t.user_id = ?
+       LIMIT 1`,
+    );
+
+    const transaction = await fetchStmt
+      .bind(transactionId, userId)
+      .first<Record<string, unknown>>();
 
     return Response.json({ transaction: transaction ? formatTransaction(transaction) : null });
   } catch (error) {
@@ -2010,11 +1992,13 @@ app.delete('/api/transactions/:id', authMiddleware, async (c) => {
   }
 
   try {
-    const result = await prisma.transaction.deleteMany({
-      where: { id: transactionId, user_id: userId },
-    });
+    const deleteStmt = c.env.DB.prepare(
+      'DELETE FROM transactions WHERE id = ? AND user_id = ?',
+    );
+    const result = (await deleteStmt.bind(transactionId, userId).run()) as D1RunResult;
 
-    if (result.count === 0) {
+    const changes = Number(result.meta?.changes ?? 0);
+    if (changes === 0) {
       return errorResponse('Transaction not found', 404);
     }
 
@@ -2038,22 +2022,27 @@ app.post('/api/transactions/:id/categorize', authMiddleware, async (c) => {
   }
 
   try {
-    const transaction = await prisma.transaction.findFirst({
-      where: { id: transactionId, user_id: userId },
-      select: {
-        id: true,
-        description: true,
-        merchant_name: true,
-      },
-    });
+    const fetchStmt = c.env.DB.prepare(
+      `SELECT id, description, merchant_name
+       FROM transactions
+       WHERE id = ? AND user_id = ?
+       LIMIT 1`,
+    );
+    const transaction = await fetchStmt
+      .bind(transactionId, userId)
+      .first<Record<string, unknown>>();
 
     if (!transaction) {
       return errorResponse('Transaction not found', 404);
     }
 
     let autoCategory = 'Outros';
-    const description = (transaction.description || '').toLowerCase();
-    const merchant = (transaction.merchant_name || '').toLowerCase();
+    const descriptionSource =
+      typeof transaction.description === 'string' ? transaction.description : '';
+    const merchantSource =
+      typeof transaction.merchant_name === 'string' ? transaction.merchant_name : '';
+    const description = descriptionSource.toLowerCase();
+    const merchant = merchantSource.toLowerCase();
 
     const categoryRules = [
       { keywords: ['uber', 'taxi', 'transporte', 'metro', 'onibus'], category: 'Transporte' },
@@ -2071,10 +2060,12 @@ app.post('/api/transactions/:id/categorize', authMiddleware, async (c) => {
       }
     }
 
-    await prisma.transaction.updateMany({
-      where: { id: transactionId, user_id: userId },
-      data: { category: autoCategory },
-    });
+    const updateStmt = c.env.DB.prepare(
+      `UPDATE transactions
+       SET category = ?, updated_at = datetime('now')
+       WHERE id = ? AND user_id = ?`,
+    );
+    await updateStmt.bind(autoCategory, transactionId, userId).run();
 
     return Response.json({
       message: 'Transaction categorized successfully',
@@ -2206,19 +2197,17 @@ app.get('/api/budgets', authMiddleware, async (c) => {
   }
 
   try {
-    const budgets = (await prisma.budget.findMany({
-      where: { user_id: userId },
-      include: {
-        account: {
-          select: {
-            name: true,
-          },
-        },
-      },
-      orderBy: [{ period_start: 'desc' }, { created_at: 'desc' }],
-    })) as Array<Record<string, unknown>>;
+    const stmt = c.env.DB.prepare(`
+      SELECT b.*, a.name AS account_name
+      FROM budgets b
+      LEFT JOIN accounts a ON b.account_id = a.id
+      WHERE b.user_id = ?
+      ORDER BY b.period_start DESC, b.created_at DESC
+    `);
+    const result = await stmt.bind(userId).all<Record<string, unknown>>();
+    const budgets = (result.results || []).map((row) => formatBudget(row));
 
-    return Response.json({ budgets: budgets.map(budget => formatBudget(budget)) });
+    return Response.json({ budgets });
   } catch (error) {
     console.error('Error fetching budgets:', error);
     return errorResponse('Failed to fetch budgets', 500);
@@ -2247,29 +2236,75 @@ app.post('/api/budgets', authMiddleware, async (c) => {
       return errorResponse('Invalid period dates', 400);
     }
 
-    const budget = await prisma.budget.create({
-      data: {
-        user_id: userId,
-        name: name.trim(),
-        category: category.trim(),
-        amount: typeof amount === 'number' ? amount : Number(amount) || 0,
-        spent: typeof body.spent === 'number' ? body.spent : 0,
-        period_start: startDate,
-        period_end: endDate,
-        status: body.status || 'active',
-        notes: body.notes,
-        account_id: body.account_id ? Number(body.account_id) : undefined,
-      },
-      include: {
-        account: {
-          select: {
-            name: true,
-          },
-        },
-      },
-    });
+    const amountValue = Number(amount);
+    if (Number.isNaN(amountValue)) {
+      return errorResponse('Invalid amount value', 400);
+    }
 
-    return Response.json({ budget: formatBudget(budget) }, { status: 201 });
+    const spentValue = body.spent !== undefined ? Number(body.spent) : 0;
+    if (Number.isNaN(spentValue)) {
+      return errorResponse('Invalid spent value', 400);
+    }
+
+    const accountIdValue =
+      body.account_id === null || body.account_id === undefined
+        ? null
+        : Number(body.account_id);
+    if (accountIdValue !== null && Number.isNaN(accountIdValue)) {
+      return errorResponse('Invalid account reference', 400);
+    }
+
+    const insertStmt = c.env.DB.prepare(`
+      INSERT INTO budgets (
+        user_id,
+        name,
+        category,
+        amount,
+        spent,
+        period_start,
+        period_end,
+        status,
+        notes,
+        account_id,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    `);
+
+    const result = (await insertStmt
+      .bind(
+        userId,
+        name.trim(),
+        category.trim(),
+        amountValue,
+        spentValue,
+        startDate.toISOString(),
+        endDate.toISOString(),
+        body.status || 'active',
+        body.notes ?? null,
+        accountIdValue,
+      )
+      .run()) as D1RunResult;
+
+    if (!result.success) {
+      return errorResponse('Failed to create budget', 500);
+    }
+
+    const budgetId = result.meta?.last_row_id;
+    if (budgetId === undefined) {
+      return errorResponse('Failed to resolve created budget', 500);
+    }
+
+    const fetchStmt = c.env.DB.prepare(`
+      SELECT b.*, a.name AS account_name
+      FROM budgets b
+      LEFT JOIN accounts a ON b.account_id = a.id
+      WHERE b.id = ? AND b.user_id = ?
+    `);
+    const budget = await fetchStmt.bind(budgetId, userId).first<Record<string, unknown>>();
+
+    return Response.json({ budget: budget ? formatBudget(budget) : null }, { status: 201 });
   } catch (error) {
     console.error('Error creating budget:', error);
     return errorResponse('Failed to create budget', 500);
@@ -2290,67 +2325,100 @@ app.put('/api/budgets/:id', authMiddleware, async (c) => {
 
   try {
     const updates = await c.req.json();
-    const data: { [key: string]: unknown } = {};
+
+    const fields: string[] = [];
+    const values: unknown[] = [];
 
     if (typeof updates.name === 'string') {
-      data.name = updates.name.trim();
+      fields.push('name = ?');
+      values.push(updates.name.trim());
     }
+
     if (typeof updates.category === 'string') {
-      data.category = updates.category.trim();
+      fields.push('category = ?');
+      values.push(updates.category.trim());
     }
+
     if (updates.amount !== undefined) {
-      data.amount = typeof updates.amount === 'number' ? updates.amount : Number(updates.amount) || 0;
+      const amountValue = Number(updates.amount);
+      if (Number.isNaN(amountValue)) {
+        return errorResponse('Invalid amount value', 400);
+      }
+      fields.push('amount = ?');
+      values.push(amountValue);
     }
+
     if (updates.spent !== undefined) {
-      data.spent = typeof updates.spent === 'number' ? updates.spent : Number(updates.spent) || 0;
+      const spentValue = Number(updates.spent);
+      if (Number.isNaN(spentValue)) {
+        return errorResponse('Invalid spent value', 400);
+      }
+      fields.push('spent = ?');
+      values.push(spentValue);
     }
+
     if (typeof updates.status === 'string') {
-      data.status = updates.status;
+      fields.push('status = ?');
+      values.push(updates.status);
     }
+
     if (typeof updates.notes === 'string' || updates.notes === null) {
-      data.notes = updates.notes;
+      fields.push('notes = ?');
+      values.push(updates.notes ?? null);
     }
+
     if (updates.period_start) {
       const startDate = new Date(updates.period_start);
       if (Number.isNaN(startDate.getTime())) {
         return errorResponse('Invalid period_start date', 400);
       }
-      data.period_start = startDate;
+      fields.push('period_start = ?');
+      values.push(startDate.toISOString());
     }
+
     if (updates.period_end) {
       const endDate = new Date(updates.period_end);
       if (Number.isNaN(endDate.getTime())) {
         return errorResponse('Invalid period_end date', 400);
       }
-      data.period_end = endDate;
-    }
-    if (updates.account_id !== undefined) {
-      data.account_id = updates.account_id === null ? null : Number(updates.account_id);
+      fields.push('period_end = ?');
+      values.push(endDate.toISOString());
     }
 
-    if (Object.keys(data).length === 0) {
+    if (updates.account_id !== undefined) {
+      const accountIdValue =
+        updates.account_id === null ? null : Number(updates.account_id);
+      if (accountIdValue !== null && Number.isNaN(accountIdValue)) {
+        return errorResponse('Invalid account reference', 400);
+      }
+      fields.push('account_id = ?');
+      values.push(accountIdValue);
+    }
+
+    if (fields.length === 0) {
       return errorResponse('No valid fields to update', 400);
     }
 
-    const result = await prisma.budget.updateMany({
-      where: { id: budgetId, user_id: userId },
-      data,
-    });
+    const setClause = `${fields.join(', ')}, updated_at = datetime('now')`;
+    const updateStmt = c.env.DB.prepare(
+      `UPDATE budgets SET ${setClause} WHERE id = ? AND user_id = ?`,
+    );
+    const result = (await updateStmt
+      .bind(...values, budgetId, userId)
+      .run()) as D1RunResult;
 
-    if (result.count === 0) {
+    const changes = Number(result.meta?.changes ?? 0);
+    if (changes === 0) {
       return errorResponse('Budget not found', 404);
     }
 
-    const budget = await prisma.budget.findUnique({
-      where: { id: budgetId },
-      include: {
-        account: {
-          select: {
-            name: true,
-          },
-        },
-      },
-    });
+    const fetchStmt = c.env.DB.prepare(
+      `SELECT b.*, a.name AS account_name
+       FROM budgets b
+       LEFT JOIN accounts a ON b.account_id = a.id
+       WHERE b.id = ? AND b.user_id = ?`,
+    );
+    const budget = await fetchStmt.bind(budgetId, userId).first<Record<string, unknown>>();
 
     return Response.json({ budget: budget ? formatBudget(budget) : null });
   } catch (error) {
@@ -2372,11 +2440,13 @@ app.delete('/api/budgets/:id', authMiddleware, async (c) => {
   }
 
   try {
-    const result = await prisma.budget.deleteMany({
-      where: { id: budgetId, user_id: userId },
-    });
+    const deleteStmt = c.env.DB.prepare(
+      'DELETE FROM budgets WHERE id = ? AND user_id = ?',
+    );
+    const result = (await deleteStmt.bind(budgetId, userId).run()) as D1RunResult;
 
-    if (result.count === 0) {
+    const changes = Number(result.meta?.changes ?? 0);
+    if (changes === 0) {
       return errorResponse('Budget not found', 404);
     }
 
@@ -2399,19 +2469,17 @@ app.get('/api/goals', authMiddleware, async (c) => {
   }
 
   try {
-    const goals = (await prisma.goal.findMany({
-      where: { user_id: userId },
-      include: {
-        account: {
-          select: {
-            name: true,
-          },
-        },
-      },
-      orderBy: [{ target_date: 'asc' }, { created_at: 'desc' }],
-    })) as Array<Record<string, unknown>>;
+    const stmt = c.env.DB.prepare(`
+      SELECT g.*, a.name AS account_name
+      FROM goals g
+      LEFT JOIN accounts a ON g.account_id = a.id
+      WHERE g.user_id = ?
+      ORDER BY g.target_date ASC, g.created_at DESC
+    `);
+    const result = await stmt.bind(userId).all<Record<string, unknown>>();
+    const goals = (result.results || []).map((row) => formatGoal(row));
 
-    return Response.json({ goals: goals.map(goal => formatGoal(goal)) });
+    return Response.json({ goals });
   } catch (error) {
     console.error('Error fetching goals:', error);
     return errorResponse('Failed to fetch goals', 500);
@@ -2438,29 +2506,74 @@ app.post('/api/goals', authMiddleware, async (c) => {
       return errorResponse('Invalid target date', 400);
     }
 
-    const goal = await prisma.goal.create({
-      data: {
-        user_id: userId,
-        title: title.trim(),
-        description: body.description,
-        target_amount: typeof target_amount === 'number' ? target_amount : Number(target_amount) || 0,
-        current_amount: typeof body.current_amount === 'number' ? body.current_amount : 0,
-        target_date: targetDate,
-        category: body.category || 'savings',
-        status: body.status || 'active',
-        priority: body.priority || 'medium',
-        account_id: body.account_id ? Number(body.account_id) : undefined,
-      },
-      include: {
-        account: {
-          select: {
-            name: true,
-          },
-        },
-      },
-    });
+    const targetAmountValue = Number(target_amount ?? 0);
+    if (Number.isNaN(targetAmountValue)) {
+      return errorResponse('Invalid target amount', 400);
+    }
 
-    return Response.json({ goal: formatGoal(goal) }, { status: 201 });
+    const currentAmountValue = body.current_amount !== undefined ? Number(body.current_amount) : 0;
+    if (Number.isNaN(currentAmountValue)) {
+      return errorResponse('Invalid current amount', 400);
+    }
+
+    const goalId = typeof body.id === 'string' && body.id.trim() ? body.id : crypto.randomUUID();
+
+    const accountIdValue =
+      body.account_id === null || body.account_id === undefined
+        ? null
+        : Number(body.account_id);
+    if (accountIdValue !== null && Number.isNaN(accountIdValue)) {
+      return errorResponse('Invalid account reference', 400);
+    }
+
+    const insertStmt = c.env.DB.prepare(`
+      INSERT INTO goals (
+        id,
+        user_id,
+        title,
+        description,
+        target_amount,
+        current_amount,
+        target_date,
+        category,
+        status,
+        priority,
+        account_id,
+        created_at,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    `);
+
+    const result = (await insertStmt
+      .bind(
+        goalId,
+        userId,
+        title.trim(),
+        body.description ?? null,
+        targetAmountValue,
+        currentAmountValue,
+        targetDate.toISOString(),
+        body.category || 'savings',
+        body.status || 'active',
+        body.priority || 'medium',
+        accountIdValue,
+      )
+      .run()) as D1RunResult;
+
+    if (!result.success) {
+      return errorResponse('Failed to create goal', 500);
+    }
+
+    const fetchStmt = c.env.DB.prepare(`
+      SELECT g.*, a.name AS account_name
+      FROM goals g
+      LEFT JOIN accounts a ON g.account_id = a.id
+      WHERE g.id = ? AND g.user_id = ?
+    `);
+    const goal = await fetchStmt.bind(goalId, userId).first<Record<string, unknown>>();
+
+    return Response.json({ goal: goal ? formatGoal(goal) : null }, { status: 201 });
   } catch (error) {
     console.error('Error creating goal:', error);
     return errorResponse('Failed to create goal', 500);
@@ -2477,63 +2590,96 @@ app.put('/api/goals/:id', authMiddleware, async (c) => {
 
   try {
     const updates = await c.req.json();
-    const data: { [key: string]: unknown } = {};
+
+    const fields: string[] = [];
+    const values: unknown[] = [];
 
     if (typeof updates.title === 'string') {
-      data.title = updates.title.trim();
+      fields.push('title = ?');
+      values.push(updates.title.trim());
     }
+
     if (typeof updates.description === 'string' || updates.description === null) {
-      data.description = updates.description;
+      fields.push('description = ?');
+      values.push(updates.description ?? null);
     }
+
     if (updates.target_amount !== undefined) {
-      data.target_amount = typeof updates.target_amount === 'number' ? updates.target_amount : Number(updates.target_amount) || 0;
+      const targetAmountValue = Number(updates.target_amount);
+      if (Number.isNaN(targetAmountValue)) {
+        return errorResponse('Invalid target amount', 400);
+      }
+      fields.push('target_amount = ?');
+      values.push(targetAmountValue);
     }
+
     if (updates.current_amount !== undefined) {
-      data.current_amount = typeof updates.current_amount === 'number' ? updates.current_amount : Number(updates.current_amount) || 0;
+      const currentAmountValue = Number(updates.current_amount);
+      if (Number.isNaN(currentAmountValue)) {
+        return errorResponse('Invalid current amount', 400);
+      }
+      fields.push('current_amount = ?');
+      values.push(currentAmountValue);
     }
+
     if (updates.target_date) {
       const targetDate = new Date(updates.target_date);
       if (Number.isNaN(targetDate.getTime())) {
         return errorResponse('Invalid target date', 400);
       }
-      data.target_date = targetDate;
-    }
-    if (typeof updates.category === 'string') {
-      data.category = updates.category;
-    }
-    if (typeof updates.status === 'string') {
-      data.status = updates.status;
-    }
-    if (typeof updates.priority === 'string') {
-      data.priority = updates.priority;
-    }
-    if (updates.account_id !== undefined) {
-      data.account_id = updates.account_id === null ? null : Number(updates.account_id);
+      fields.push('target_date = ?');
+      values.push(targetDate.toISOString());
     }
 
-    if (Object.keys(data).length === 0) {
+    if (typeof updates.category === 'string') {
+      fields.push('category = ?');
+      values.push(updates.category);
+    }
+
+    if (typeof updates.status === 'string') {
+      fields.push('status = ?');
+      values.push(updates.status);
+    }
+
+    if (typeof updates.priority === 'string') {
+      fields.push('priority = ?');
+      values.push(updates.priority);
+    }
+
+    if (updates.account_id !== undefined) {
+      const accountIdValue =
+        updates.account_id === null ? null : Number(updates.account_id);
+      if (accountIdValue !== null && Number.isNaN(accountIdValue)) {
+        return errorResponse('Invalid account reference', 400);
+      }
+      fields.push('account_id = ?');
+      values.push(accountIdValue);
+    }
+
+    if (fields.length === 0) {
       return errorResponse('No valid fields to update', 400);
     }
 
-    const result = await prisma.goal.updateMany({
-      where: { id: goalId, user_id: userId },
-      data,
-    });
+    const setClause = `${fields.join(', ')}, updated_at = datetime('now')`;
+    const updateStmt = c.env.DB.prepare(
+      `UPDATE goals SET ${setClause} WHERE id = ? AND user_id = ?`,
+    );
+    const result = (await updateStmt
+      .bind(...values, goalId, userId)
+      .run()) as D1RunResult;
 
-    if (result.count === 0) {
+    const changes = Number(result.meta?.changes ?? 0);
+    if (changes === 0) {
       return errorResponse('Goal not found', 404);
     }
 
-    const goal = await prisma.goal.findUnique({
-      where: { id: goalId },
-      include: {
-        account: {
-          select: {
-            name: true,
-          },
-        },
-      },
-    });
+    const fetchStmt = c.env.DB.prepare(
+      `SELECT g.*, a.name AS account_name
+       FROM goals g
+       LEFT JOIN accounts a ON g.account_id = a.id
+       WHERE g.id = ? AND g.user_id = ?`,
+    );
+    const goal = await fetchStmt.bind(goalId, userId).first<Record<string, unknown>>();
 
     return Response.json({ goal: goal ? formatGoal(goal) : null });
   } catch (error) {
@@ -2551,11 +2697,13 @@ app.delete('/api/goals/:id', authMiddleware, async (c) => {
   }
 
   try {
-    const result = await prisma.goal.deleteMany({
-      where: { id: goalId, user_id: userId },
-    });
+    const deleteStmt = c.env.DB.prepare(
+      'DELETE FROM goals WHERE id = ? AND user_id = ?',
+    );
+    const result = (await deleteStmt.bind(goalId, userId).run()) as D1RunResult;
 
-    if (result.count === 0) {
+    const changes = Number(result.meta?.changes ?? 0);
+    if (changes === 0) {
       return errorResponse('Goal not found', 404);
     }
 
