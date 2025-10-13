@@ -1,79 +1,97 @@
-## FinContas
+# FinContas
 
-FinContas é um gerenciador financeiro com autenticação gerenciada pelo [Clerk](https://clerk.com).
+FinContas é um gerenciador financeiro moderno que combina um front-end React com um worker Hono/Cloudflare para processar dados, autenticação via Clerk e sincronização bancária com Pluggy. O projeto foi desenhado para rodar em ambientes serverless (Cloudflare Workers) ou como contêiner Docker pronto para implantação em provedores como o Dockploy.
 
-Para suporte adicional ou para conversar com a comunidade, acesse nosso [Discord](https://discord.gg/shDEGBSe2d).
+## Funcionalidades em destaque
+- Autenticação de usuários com Clerk (sign-in, sign-up e proteção de rotas).
+- Sincronização de contas, transações, objetivos e orçamentos com base em PostgreSQL via Prisma.
+- Conectores Pluggy para importar dados bancários (contas, transações e webhooks).
+- Painéis e visualizações construídos com React, Tailwind CSS e componentes reutilizáveis.
+- Worker Cloudflare responsável por APIs financeiras, agregações e webhooks.
 
-To run the devserver:
-```
-npm install
-npm run dev
-```
+## Stack tecnológica
+- [Vite](https://vitejs.dev/) + [React 19](https://react.dev/) no front-end.
+- [Hono](https://hono.dev/) executando como Cloudflare Worker (rota `/src/worker`).
+- [Clerk](https://clerk.com/) para autenticação e gestão de sessão.
+- [Prisma](https://www.prisma.io/) + PostgreSQL para persistência de dados.
+- [Tailwind CSS](https://tailwindcss.com/) e [Headless UI](https://headlessui.com/) para UI.
+- [Pluggy](https://pluggy.ai/) para integração bancária.
 
-> **Need to run behind a restrictive proxy?**
-> Set `VITE_CLOUDFLARE_INSPECTOR_DISABLED=true` before `npm run dev` to disable the
-> Cloudflare Inspector WebSocket handshake. You can also pick a custom inspector port by
-> defining `VITE_CLOUDFLARE_INSPECTOR_PORT` (defaults to the plugin's built-in value).
+## Pré-requisitos
+- Node.js 20.x (recomendado) e npm 10+
+- Banco PostgreSQL 15 (local ou gerenciado)
+- Docker (opcional) para subir serviços auxiliares rapidamente
 
-### Autenticação Clerk
-
-Configure as seguintes variáveis de ambiente (veja `.env.example`):
-
-```
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="pk_test_xxx"
-CLERK_SECRET_KEY="sk_test_xxx"
-# Opcional: mantenha apenas se ainda utilizar o build Vite legado
-VITE_CLERK_PUBLISHABLE_KEY="pk_test_xxx"
-VITE_API_BASE_URL="https://seu-worker.exemplo"
-```
-
-O `publishable key` (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`) é utilizado no front-end Next.js recém configurado
-e o `secret key` mantém a validação de sessões no Worker.
-O build Vite reaproveita automaticamente `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`; mantenha `VITE_CLERK_PUBLISHABLE_KEY` apenas se ainda utilizar scripts legados ou fluxos específicos que o exijam.
-`VITE_API_BASE_URL` é opcional; defina-o quando o Worker estiver hospedado em um domínio diferente para que o front-end consiga chamar a API.
-Quando a aplicação é servida a partir do domínio público (`fincontas.ramonma.online`), o bundle redireciona automaticamente chamadas a `/api/*` e métodos mutadores para o Worker hospedado na Cloudflare, evitando que o host estático intercepte `POST/PUT/DELETE`.
-
-### Prisma tooling
-
-O projeto utiliza Prisma com PostgreSQL (testado com `postgres:15`). Para preparar o ambiente local ou o Dockploy:
-
-1. Copie o arquivo de variáveis e ajuste o `DATABASE_URL` conforme o host do Postgres:
+## Configuração rápida
+1. Clone o repositório e instale as dependências:
+   ```bash
+   npm install
+   ```
+2. Copie o arquivo de variáveis e ajuste os valores conforme seu ambiente:
    ```bash
    cp .env.example .env
    ```
-2. Se estiver utilizando Docker localmente, suba um contêiner rápido de Postgres 15:
+3. Garanta que um PostgreSQL esteja disponível. Para subir um contêiner localmente:
    ```bash
    docker run --name fincontas-db -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=fincontas -p 5432:5432 -d postgres:15
    ```
-3. Execute as migrations e gere o client do Prisma:
+4. Execute as migrations e gere o client do Prisma:
    ```bash
    npx prisma migrate dev
    npx prisma generate
    ```
 
-> **Produção:** antes de iniciar a aplicação, execute `npx prisma migrate deploy` apontando para o banco Postgres configurado no Dockploy (ou outro provedor gerenciado) para garantir que o esquema esteja atualizado.
+## Executando localmente
+- Inicie o modo desenvolvimento:
+  ```bash
+  npm run dev
+  ```
+- Rodando atrás de um proxy restritivo? Defina `VITE_CLOUDFLARE_INSPECTOR_DISABLED=true` antes de iniciar o dev server. É possível configurar a porta do inspector com `VITE_CLOUDFLARE_INSPECTOR_PORT`.
 
-### Deploy no Dockploy
+### Scripts úteis
+- `npm run lint` – executa ESLint.
+- `npm run build` – gera o bundle de produção (front-end + worker).
+- `npm run preview` – executa o servidor de preview com o build gerado.
+- `npm run check` – compila o TypeScript, builda o front-end e faz um dry-run do deploy Wrangler.
+- `npm run cf-typegen` – atualiza os tipos de bindings do Cloudflare Worker.
 
-O repositório já contém um `Dockerfile` preparado para gerar uma imagem de produção a partir do projeto Vite + Worker. Esse `Dockerfile`
-executa `npm ci --include=dev`, roda o build (`npm run build`) e, no estágio final, publica os artefatos em um servidor `vite preview`
-expondo a aplicação na porta `4173`.
+## Variáveis de ambiente
+| Variável | Contexto | Descrição |
+| --- | --- | --- |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | build/runtime | Chave pública do Clerk usada pelo front-end (Next/Vite). |
+| `CLERK_SECRET_KEY` | runtime (worker) | Chave secreta do Clerk utilizada para validar sessões no Worker. |
+| `VITE_CLERK_PUBLISHABLE_KEY` | build (opcional) | Apenas necessária caso scripts legados Vite ainda dependam dessa variável. |
+| `VITE_API_BASE_URL` | build (opcional) | URL do worker quando hospedado fora do mesmo domínio do front-end. |
+| `DATABASE_URL` | runtime | String de conexão PostgreSQL consumida pelo Prisma. |
+| `OPENAI_API_KEY` | runtime (opcional) | Necessário para recursos de insights por IA. |
+| `PLUGGY_CLIENT_ID` e `PLUGGY_CLIENT_SECRET` | runtime (opcional) | Credenciais para sincronização bancária via Pluggy. |
+
+## Prisma & Banco de dados
+- Para aplicar migrations em produção execute `npx prisma migrate deploy` apontando para o banco configurado.
+- Utilize `npx prisma studio` para inspecionar dados localmente.
+- O Worker garante o schema chamando `ensureDatabaseSchema` em cada request, evitando tabelas divergentes.
+
+## Estrutura principal de diretórios
+```
+src/
+├── app/                # Rotas e páginas do front-end React
+├── components/         # Componentes compartilhados (UI)
+├── react-app/          # Entrypoint SPA
+├── shared/             # Tipagens compartilhadas entre app/worker
+└── worker/             # Código do Worker Hono + integrações Pluggy/Prisma
+```
+
+## Deploy com Docker / Dockploy
+O repositório possui um `Dockerfile` multi-stage que instala dependências (`npm ci --include=dev`), executa `npm run build` e publica os artefatos usando `vite preview` na porta `4173`.
 
 Para publicar no [Dockploy](https://app.dockploy.io):
+1. Configure as variáveis de ambiente (build/exec) no painel: `VITE_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `VITE_API_BASE_URL` (opcional), `DATABASE_URL`, `OPENAI_API_KEY` (opcional) e credenciais Pluggy.
+2. Crie uma aplicação do tipo *Dockerfile* apontando para este repositório. O Dockploy detectará o arquivo automaticamente.
+3. Comandos sugeridos:
+   - Build: `docker build --build-arg VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY --build-arg VITE_API_BASE_URL=$VITE_API_BASE_URL -t fincontas .`
+   - Execução: `docker run -p 4173:4173 --env-file <arquivo-env> fincontas`
+4. Exponha a porta `4173` (ou utilize a variável `PORT` disponível na plataforma – o script `npm run preview` a detecta automaticamente).
+5. Durante a inicialização, `npx prisma migrate deploy` é executado garantindo que o schema esteja atualizado antes de servir as requisições.
 
-1. Certifique-se de que as variáveis de ambiente abaixo estejam configuradas no painel da plataforma (seu valor será injetado na etapa de *build* ou execução conforme indicado):
-   - **VITE_CLERK_PUBLISHABLE_KEY** (build): chave pública do Clerk, usada pelo front-end.
-   - **CLERK_SECRET_KEY** (execução): chave secreta do Clerk, utilizada pelo Worker.
-   - **VITE_API_BASE_URL** (build/opcional): URL pública do Worker quando hospedado fora do Dockploy.
-   - **DATABASE_URL** (execução): string de conexão que o Prisma usará. Em produção utilize um banco persistente (por exemplo, PostgreSQL ou MySQL).
-   - **OPENAI_API_KEY** (execução/opcional): requerido somente se as rotas de insights alimentadas por IA forem utilizadas.
-   - **PLUGGY_CLIENT_ID** e **PLUGGY_CLIENT_SECRET** (execução/opcional): necessários para habilitar a integração com o Pluggy.
-2. Crie uma nova aplicação do tipo “Dockerfile” no Dockploy apontando para este repositório. A plataforma detectará o `Dockerfile` na raiz.
-3. Configure os comandos padrão caso queira executá-los manualmente:
-   - Comando de build: `docker build --build-arg VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY --build-arg VITE_API_BASE_URL=$VITE_API_BASE_URL -t fincontas .`
-   - Comando de execução: `docker run -p 4173:4173 --env-file <arquivo-env> fincontas` (no Dockploy a plataforma monta automaticamente a exposição da porta informada).
-4. Defina a porta de exposição como `4173` (ou utilize a variável `PORT` que o Dockploy disponibiliza – o script `npm run preview` a reconhece automaticamente).
-
-Durante a inicialização do contêiner, o comando `npx prisma migrate deploy` é executado antes do servidor iniciar. Isso garante que o banco apontado por `DATABASE_URL` seja criado/atualizado conforme o esquema. Em provedores gerenciados (p. ex. PostgreSQL), basta criar a instância e expor a URL de conexão; o Prisma cuidará da criação das tabelas.
-
-> **Dica:** Em ambientes locais com `NODE_ENV=production`, execute `npm install --include=dev` antes de rodar `npm run build` para garantir que as dependências de desenvolvimento (como o próprio Vite) sejam instaladas.
+## Suporte e comunidade
+Para dúvidas ou para conversar com a comunidade, participe do nosso [Discord](https://discord.gg/shDEGBSe2d).
