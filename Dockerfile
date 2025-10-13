@@ -8,6 +8,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --include=dev
 
 FROM base AS build
+ARG VITE_CLERK_PUBLISHABLE_KEY
+ENV VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
