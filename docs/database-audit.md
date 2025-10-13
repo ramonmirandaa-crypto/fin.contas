@@ -1,25 +1,22 @@
 # Auditoria do banco de dados
 
 ## Stack e esquema atuais
-- O projeto usa Prisma com provider `sqlite` e espera a URL do banco em `DATABASE_URL`, definindo modelos para contas, transações, orçamentos, metas, despesas, configurações de usuário e webhooks.【F:prisma/schema.prisma†L1-L288】
+- O Worker Hono utiliza exclusivamente o binding D1 com consultas SQL, e o esquema oficial está versionado em migrations D1 (`migrations/0001_initial.sql`).
 - O template de variáveis expõe `DATABASE_URL` apontando para `file:./prisma/dev.db`, além das chaves do Clerk utilizadas tanto no front-end quanto no Worker.【F:.env.example†L1-L11】
-- O Worker Hono inicializa um banco D1 via `ensureDatabaseSchema`, criando e migrando tabelas diretamente com SQL para as mesmas entidades do Prisma e para coleções adicionais como `credit_cards`, `investments`, `loans`, `credit_card_bills` e `transaction_categories`.【F:src/worker/index.ts†L48-L411】
 - A configuração do Wrangler já vincula o binding `DB` a uma instância Cloudflare D1, garantindo a disponibilidade do banco no Worker.【F:wrangler.jsonc†L1-L20】
 
 ## Rotinas de persistência
-- As rotas de contas, transações, orçamentos e metas utilizam o `PrismaClient` para ler e gravar dados (`findMany`, `create`, `updateMany`, `deleteMany`).【F:src/worker/index.ts†L1287-L1417】【F:src/worker/index.ts†L1638-L1712】
-- Rotinas de despesas, cartões, investimentos, empréstimos, categorias, configurações de Pluggy e webhooks usam consultas SQL diretas no binding D1 (`c.env.DB.prepare(...).run()/all()`), coexistindo com o uso do Prisma nas mesmas APIs.【F:src/worker/index.ts†L1140-L1515】【F:src/worker/index.ts†L2093-L3128】
-- O Dockerfile de produção executa `npx prisma migrate deploy` antes de servir o bundle, assumindo que a aplicação terá acesso a um banco compatível com o Prisma na inicialização.【F:Dockerfile†L1-L22】
+- Todas as rotas do worker (contas, transações, orçamentos, metas, despesas, cartões etc.) agora utilizam consultas SQL diretas sobre `c.env.DB`.
+- O bootstrap do esquema ocorre via migrations D1 oficiais e não há execução de `prisma migrate` no build do Worker.
 
 ## Configurações existentes
 - O README documenta a preparação do Prisma local (`prisma migrate dev`/`generate`) e orienta exportar `DATABASE_URL`, chaves Clerk, API base do Worker, Pluggy e OpenAI nos ambientes de build/execução.【F:README.md†L13-L71】
 - Não há variáveis específicas para o D1 além do binding do Wrangler; a sincronização D1 ↔ Prisma depende de scripts internos do Worker.
 
 ## Lacunas e riscos identificados
-1. **Duas fontes de verdade para o esquema** – O Worker recria tabelas manualmente enquanto o Prisma mantém migrations separadas. Tabelas exclusivas do D1 (`credit_cards`, `investments`, etc.) não existem no schema Prisma, o que impede que `prisma migrate` replique essa estrutura em bancos externos.【F:src/worker/index.ts†L222-L347】【F:prisma/schema.prisma†L200-L288】
-2. **Incompatibilidade de tipos** – `user_configs` armazena `created_at/updated_at` como `TEXT` na migração D1, enquanto o Prisma espera `DateTime`, o que pode gerar dados inválidos ao compartilhar o mesmo banco entre as duas camadas.【F:src/worker/index.ts†L371-L379】【F:prisma/schema.prisma†L227-L236】
-3. **Ambiente Worker x Prisma** – Cloudflare Workers não suportam conexões SQLite locais; para usar Prisma é necessário apontar `DATABASE_URL` para um provedor acessível via HTTP (PostgreSQL/MySQL com Prisma Accelerate/Data Proxy). Caso contrário as rotas que usam `prisma.*` falharão no deploy edge, embora partes baseadas em D1 continuem funcionando.
-4. **Migração de schema parcial** – `ensureDatabaseSchema` adiciona colunas via `ALTER TABLE` em tempo de execução (`addOptionalColumn`), escondendo evoluções de schema fora do controle do Prisma e dificultando reproduzir o estado do banco em outros ambientes.【F:src/worker/index.ts†L417-L448】
+1. **Fonte única de verdade** – Com as rotas migradas para D1 e migrations oficiais versionadas, o Worker e o banco compartilham o mesmo contrato de dados. Ainda é importante manter o esquema em SQL sincronizado com qualquer documentação ou artefatos restantes de Prisma para evitar confusão histórica.
+2. **Ambiente Worker** – O uso de D1 elimina a dependência do Prisma Client no edge, mas continua necessário monitorar limites de armazenamento/consulta do D1 conforme o produto crescer.
+3. **Ferramentas auxiliares** – Scripts e documentação que ainda mencionam Prisma (`DATABASE_URL`, `prisma migrate`, etc.) devem ser revisados para refletir o fluxo atual baseado em migrations D1.
 
 ## Recomendações e opções de integração
 1. **Padronizar no Cloudflare D1**
