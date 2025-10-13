@@ -9,11 +9,16 @@ const stripTrailingSlashes = (value: string): string => {
   return value.slice(0, end);
 };
 
-const sanitizedBaseUrl = rawBaseUrl ? stripTrailingSlashes(rawBaseUrl) : '';
+const sanitizedBaseUrl = rawBaseUrl ? stripTrailingSlashes(rawBaseUrl.trim()) : '';
 
-const PRODUCTION_FALLBACKS: Record<string, string> = {
-  'contas.ramonma.online': 'https://n5jcegoubmvau.mocha.app',
-  'fincontas.ramonma.online': 'https://n5jcegoubmvau.mocha.app',
+const WORKER_FALLBACK_ORIGINS = [
+  'https://0199711a-c4e4-7884-86f1-522b7cf5b5f9.n5jcegoubmvau.workers.dev',
+  'https://n5jcegoubmvau.mocha.app',
+] as const;
+
+const PRODUCTION_FALLBACKS: Record<string, readonly string[]> = {
+  'contas.ramonma.online': WORKER_FALLBACK_ORIGINS,
+  'fincontas.ramonma.online': WORKER_FALLBACK_ORIGINS,
 };
 
 const ensureScheme = (value: string) => {
@@ -28,17 +33,38 @@ const ensureScheme = (value: string) => {
   return `https://${value}`;
 };
 
-const getHostFallbackBaseUrl = () => {
+const sanitizeBaseCandidate = (candidate: string): string => {
+  const trimmed = candidate.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  return ensureScheme(stripTrailingSlashes(trimmed));
+};
+
+const getHostFallbackBaseUrls = (): string[] => {
   if (typeof window === 'undefined') {
-    return '';
+    return [];
   }
 
-  const fallback = PRODUCTION_FALLBACKS[window.location.hostname.toLowerCase()];
-  if (!fallback) {
-    return '';
+  const fallbackCandidates = PRODUCTION_FALLBACKS[window.location.hostname.toLowerCase()];
+  if (!fallbackCandidates?.length) {
+    return [];
   }
 
-  return ensureScheme(stripTrailingSlashes(fallback));
+  const sanitized: string[] = [];
+
+  for (const candidate of fallbackCandidates) {
+    const sanitizedCandidate = sanitizeBaseCandidate(candidate);
+
+    if (!sanitizedCandidate || sanitized.includes(sanitizedCandidate)) {
+      continue;
+    }
+
+    sanitized.push(sanitizedCandidate);
+  }
+
+  return sanitized;
 };
 
 const normalizePathForOrigin = (value: string): string => {
@@ -79,23 +105,16 @@ const isSameOriginBaseUrl = (value: string): boolean => {
 const explicitBaseUrl = ensureScheme(sanitizedBaseUrl);
 
 type BaseUrlResolution = {
-  primaryBaseUrl: string;
-  secondaryBaseUrl: string;
-  hostFallbackBaseUrl: string;
+  explicitBaseUrl: string;
+  hostFallbackBaseUrls: string[];
 };
 
 const resolveBaseUrls = (): BaseUrlResolution => {
-  const hostFallbackBaseUrl = getHostFallbackBaseUrl();
-  const primaryBaseUrl = explicitBaseUrl || hostFallbackBaseUrl || '';
-  const secondaryBaseUrl =
-    explicitBaseUrl && hostFallbackBaseUrl && explicitBaseUrl !== hostFallbackBaseUrl
-      ? hostFallbackBaseUrl
-      : '';
+  const hostFallbackBaseUrls = getHostFallbackBaseUrls();
 
   return {
-    primaryBaseUrl,
-    secondaryBaseUrl,
-    hostFallbackBaseUrl,
+    explicitBaseUrl,
+    hostFallbackBaseUrls,
   };
 };
 
@@ -119,21 +138,23 @@ const buildBaseUrlAttempts = (method: string, path: string, baseUrls: BaseUrlRes
   };
 
   const normalizedPath = normalizePathForOrigin(path);
+  const { explicitBaseUrl, hostFallbackBaseUrls } = baseUrls;
   const preferHostFallback =
-    Boolean(baseUrls.hostFallbackBaseUrl) &&
-    isSameOriginBaseUrl(baseUrls.primaryBaseUrl) &&
+    hostFallbackBaseUrls.length > 0 &&
     (isMutatingMethod(method) || normalizedPath.startsWith('/api/'));
 
-  const { primaryBaseUrl, secondaryBaseUrl, hostFallbackBaseUrl } = baseUrls;
+  const addHostFallbacks = () => {
+    for (const fallbackBaseUrl of hostFallbackBaseUrls) {
+      pushBaseUrl(fallbackBaseUrl);
+    }
+  };
 
   if (preferHostFallback) {
-    pushBaseUrl(hostFallbackBaseUrl);
-    pushBaseUrl(primaryBaseUrl);
-    pushBaseUrl(secondaryBaseUrl);
+    addHostFallbacks();
+    pushBaseUrl(explicitBaseUrl);
   } else {
-    pushBaseUrl(primaryBaseUrl);
-    pushBaseUrl(secondaryBaseUrl);
-    pushBaseUrl(hostFallbackBaseUrl);
+    pushBaseUrl(explicitBaseUrl);
+    addHostFallbacks();
   }
 
   if (!attempts.length) {
@@ -367,7 +388,22 @@ export class OfflineError extends Error {
   }
 }
 
-function buildUrl(path: string, baseUrl: string): string {
+const joinUrlPaths = (basePath: string, normalizedPath: string): string => {
+  if (!basePath || basePath === '/') {
+    return normalizedPath;
+  }
+
+  const baseWithoutTrailingSlash = stripTrailingSlashes(basePath);
+  const prefix = `${baseWithoutTrailingSlash}/`;
+
+  if (normalizedPath === baseWithoutTrailingSlash || normalizedPath.startsWith(prefix)) {
+    return normalizedPath;
+  }
+
+  return `${baseWithoutTrailingSlash}${normalizedPath}`;
+};
+
+const buildUrl = (path: string, baseUrl: string): string => {
   if (/^https?:\/\//i.test(path)) {
     return path;
   }
@@ -378,15 +414,30 @@ function buildUrl(path: string, baseUrl: string): string {
     return normalizedPath;
   }
 
-  const isAbsolute = /^https?:\/\//i.test(baseUrl) || baseUrl.startsWith('//');
+  const isAbsolute = /^https?:\/\//i.test(baseUrl);
+  const isProtocolRelative = baseUrl.startsWith('//');
   const isRelative = baseUrl.startsWith('/');
 
-  if (isAbsolute || isRelative) {
-    return `${baseUrl}${normalizedPath}`;
+  if (isAbsolute || isProtocolRelative) {
+    try {
+      const absoluteBase = isAbsolute
+        ? baseUrl
+        : `${(typeof window !== 'undefined' ? window.location.protocol : 'https:')}${baseUrl}`;
+      const url = new URL(absoluteBase);
+      url.pathname = joinUrlPaths(url.pathname || '/', normalizedPath);
+      const resolved = url.toString();
+      return isProtocolRelative ? resolved.replace(/^https?:/, '') : resolved;
+    } catch {
+      // Fall through to the relative handling below if URL parsing fails.
+    }
+  }
+
+  if (isRelative) {
+    return joinUrlPaths(baseUrl, normalizedPath);
   }
 
   return normalizedPath;
-}
+};
 
 function isNavigatorOffline() {
   return typeof navigator !== 'undefined' && navigator.onLine === false;
@@ -435,37 +486,64 @@ function shouldRetryWithNextBase(
     return false;
   }
 
-  if (!isSameOriginBaseUrl(attemptedBaseUrl)) {
+  const attemptedIsSameOrigin = isSameOriginBaseUrl(attemptedBaseUrl);
+  const attemptedIsExplicit =
+    Boolean(baseUrls.explicitBaseUrl) && attemptedBaseUrl === baseUrls.explicitBaseUrl;
+  const attemptedIsFallback = baseUrls.hostFallbackBaseUrls.includes(attemptedBaseUrl);
+
+  if (!attemptedIsSameOrigin && !attemptedIsExplicit && !attemptedIsFallback) {
     return false;
   }
 
-  if (typeof window === 'undefined') {
-    return false;
+  const status = response.status;
+
+  if (attemptedIsSameOrigin) {
+    if (typeof window === 'undefined') {
+      return false;
+    }
+
+    const resolvedUrl = resolveAttemptedUrl(attemptedUrl);
+
+    if (!resolvedUrl.startsWith(window.location.origin)) {
+      return false;
+    }
+
+    if ((status >= 300 && status <= 399) || status === 404 || status === 405) {
+      return true;
+    }
+
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+
+    if (!contentType.includes('text/html')) {
+      return false;
+    }
+
+    if (!resolvedUrl.includes('/api/') && method === 'GET') {
+      return false;
+    }
+
+    const normalizedPath = normalizePathForOrigin(attemptedUrl);
+
+    if (normalizedPath.startsWith('/api/')) {
+      return true;
+    }
+
+    return isMutatingMethod(method);
   }
 
-  const resolvedUrl = resolveAttemptedUrl(attemptedUrl);
-
-  if (!resolvedUrl.startsWith(window.location.origin)) {
-    return false;
-  }
-
-  const { hostFallbackBaseUrl, secondaryBaseUrl } = baseUrls;
-
-  if (!secondaryBaseUrl && (!hostFallbackBaseUrl || hostFallbackBaseUrl === attemptedBaseUrl)) {
-    return false;
-  }
-
-  if (response.status === 404 || response.status === 405) {
+  if (
+    (status >= 300 && status <= 399) ||
+    status === 403 ||
+    status === 404 ||
+    status === 405 ||
+    (status >= 500 && status <= 599)
+  ) {
     return true;
   }
 
   const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
 
   if (!contentType.includes('text/html')) {
-    return false;
-  }
-
-  if (!resolvedUrl.includes('/api/') && method === 'GET') {
     return false;
   }
 
