@@ -389,7 +389,22 @@ export class OfflineError extends Error {
   }
 }
 
-function buildUrl(path: string, baseUrl: string): string {
+const joinUrlPaths = (basePath: string, normalizedPath: string): string => {
+  if (!basePath || basePath === '/') {
+    return normalizedPath;
+  }
+
+  const baseWithoutTrailingSlash = stripTrailingSlashes(basePath);
+  const prefix = `${baseWithoutTrailingSlash}/`;
+
+  if (normalizedPath === baseWithoutTrailingSlash || normalizedPath.startsWith(prefix)) {
+    return normalizedPath;
+  }
+
+  return `${baseWithoutTrailingSlash}${normalizedPath}`;
+};
+
+const buildUrl = (path: string, baseUrl: string): string => {
   if (/^https?:\/\//i.test(path)) {
     return path;
   }
@@ -400,15 +415,30 @@ function buildUrl(path: string, baseUrl: string): string {
     return normalizedPath;
   }
 
-  const isAbsolute = /^https?:\/\//i.test(baseUrl) || baseUrl.startsWith('//');
+  const isAbsolute = /^https?:\/\//i.test(baseUrl);
+  const isProtocolRelative = baseUrl.startsWith('//');
   const isRelative = baseUrl.startsWith('/');
 
-  if (isAbsolute || isRelative) {
-    return `${baseUrl}${normalizedPath}`;
+  if (isAbsolute || isProtocolRelative) {
+    try {
+      const absoluteBase = isAbsolute
+        ? baseUrl
+        : `${(typeof window !== 'undefined' ? window.location.protocol : 'https:')}${baseUrl}`;
+      const url = new URL(absoluteBase);
+      url.pathname = joinUrlPaths(url.pathname || '/', normalizedPath);
+      const resolved = url.toString();
+      return isProtocolRelative ? resolved.replace(/^https?:/, '') : resolved;
+    } catch {
+      // Fall through to the relative handling below if URL parsing fails.
+    }
+  }
+
+  if (isRelative) {
+    return joinUrlPaths(baseUrl, normalizedPath);
   }
 
   return normalizedPath;
-}
+};
 
 function isNavigatorOffline() {
   return typeof navigator !== 'undefined' && navigator.onLine === false;
