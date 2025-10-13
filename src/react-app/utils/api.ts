@@ -139,7 +139,9 @@ const buildBaseUrlAttempts = (method: string, path: string, baseUrls: BaseUrlRes
 
   const normalizedPath = normalizePathForOrigin(path);
   const { explicitBaseUrl, hostFallbackBaseUrls } = baseUrls;
+  const explicitIsSameOrigin = isSameOriginBaseUrl(explicitBaseUrl);
   const preferHostFallback =
+    explicitIsSameOrigin &&
     hostFallbackBaseUrls.length > 0 &&
     (isMutatingMethod(method) || normalizedPath.startsWith('/api/'));
 
