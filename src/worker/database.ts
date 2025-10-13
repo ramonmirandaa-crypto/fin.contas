@@ -1,5 +1,123 @@
 import type { D1Database } from '@cloudflare/workers-types';
 
+const splitSqlStatements = (input: string): string[] => {
+  const statements: string[] = [];
+  let current = '';
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+  let triggerDepth = 0;
+
+  const isBoundary = (value: string, index: number, length: number) => {
+    const before = value[index - 1];
+    const after = value[index + length];
+    const isBeforeBoundary =
+      index === 0 || /[\s;(),]/.test(before ?? '');
+    const isAfterBoundary =
+      index + length >= value.length || /[\s;(),]/.test(after ?? '');
+
+    return isBeforeBoundary && isAfterBoundary;
+  };
+
+  for (let index = 0; index < input.length; index += 1) {
+    const char = input[index];
+    const next = input[index + 1];
+
+    if (inLineComment) {
+      current += char;
+
+      if (char === '\n') {
+        inLineComment = false;
+      }
+
+      continue;
+    }
+
+    if (inBlockComment) {
+      current += char;
+
+      if (char === '*' && next === '/') {
+        current += '/';
+        index += 1;
+        inBlockComment = false;
+      }
+
+      continue;
+    }
+
+    if (!inSingleQuote && !inDoubleQuote) {
+      if (char === '-' && next === '-') {
+        current += char;
+        current += next;
+        index += 1;
+        inLineComment = true;
+        continue;
+      }
+
+      if (char === '/' && next === '*') {
+        current += char;
+        current += next;
+        index += 1;
+        inBlockComment = true;
+        continue;
+      }
+    }
+
+    if (char === '\'' && !inDoubleQuote) {
+      current += char;
+
+      if (input[index - 1] !== '\\') {
+        inSingleQuote = !inSingleQuote;
+      }
+
+      continue;
+    }
+
+    if (char === '"' && !inSingleQuote) {
+      current += char;
+
+      if (input[index - 1] !== '\\') {
+        inDoubleQuote = !inDoubleQuote;
+      }
+
+      continue;
+    }
+
+    if (!inSingleQuote && !inDoubleQuote) {
+      const remaining = input.slice(index).toUpperCase();
+
+      if (remaining.startsWith('BEGIN') && isBoundary(input, index, 5)) {
+        triggerDepth += 1;
+      } else if (remaining.startsWith('END') && isBoundary(input, index, 3)) {
+        triggerDepth = Math.max(0, triggerDepth - 1);
+      }
+    }
+
+    if (char === ';' && !inSingleQuote && !inDoubleQuote && triggerDepth === 0) {
+      current += char;
+      const trimmed = current.trim();
+
+      if (trimmed) {
+        statements.push(trimmed);
+      }
+
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  const trimmed = current.trim();
+
+  if (trimmed) {
+    statements.push(trimmed);
+  }
+
+  return statements;
+};
+
 export const INITIAL_SCHEMA_SQL = `PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS accounts (
@@ -409,12 +527,96 @@ CREATE INDEX IF NOT EXISTS idx_webhook_logs_webhook_id ON webhook_logs(webhook_i
 CREATE INDEX IF NOT EXISTS idx_webhook_logs_created_at ON webhook_logs(created_at);
 ` as const;
 
+type Migration = {
+  id: string;
+  statements: readonly string[];
+};
+
+const MIGRATIONS: readonly Migration[] = [
+  {
+    id: '0001_initial_schema',
+    statements: splitSqlStatements(INITIAL_SCHEMA_SQL),
+  },
+];
+
 let schemaInitPromise: Promise<void> | null = null;
+
+const runStatement = async (db: D1Database, statement: string) => {
+  await db.prepare(statement).run();
+};
+
+const applyMigration = async (db: D1Database, migration: Migration) => {
+  const pragmaStatements: string[] = [];
+  const transactionalStatements: string[] = [];
+
+  for (const statement of migration.statements) {
+    const normalized = statement.trim().toUpperCase();
+
+    if (normalized.startsWith('PRAGMA')) {
+      pragmaStatements.push(statement);
+    } else {
+      transactionalStatements.push(statement);
+    }
+  }
+
+  for (const statement of pragmaStatements) {
+    await runStatement(db, statement);
+  }
+
+  await db.exec('BEGIN TRANSACTION;');
+
+  try {
+    for (const statement of transactionalStatements) {
+      await runStatement(db, statement);
+    }
+
+    await db
+      .prepare('INSERT INTO schema_migrations (id, applied_at) VALUES (?, CURRENT_TIMESTAMP)')
+      .bind(migration.id)
+      .run();
+
+    await db.exec('COMMIT;');
+  } catch (error) {
+    await db.exec('ROLLBACK;');
+    throw error;
+  }
+};
+
+const ensureMigrationsTable = async (db: D1Database) => {
+  await db.exec(
+    `CREATE TABLE IF NOT EXISTS schema_migrations (
+      id TEXT PRIMARY KEY,
+      applied_at DATETIME NOT NULL
+    );`
+  );
+};
+
+const getAppliedMigrations = async (db: D1Database): Promise<Set<string>> => {
+  const result = await db.prepare('SELECT id FROM schema_migrations').all<{ id: string }>();
+  const applied = new Set<string>();
+
+  for (const row of result.results ?? []) {
+    if (row?.id) {
+      applied.add(row.id);
+    }
+  }
+
+  return applied;
+};
 
 export const ensureDatabaseSchema = async (db: D1Database): Promise<void> => {
   if (!schemaInitPromise) {
     schemaInitPromise = (async () => {
-      await db.exec(INITIAL_SCHEMA_SQL);
+      await ensureMigrationsTable(db);
+      const applied = await getAppliedMigrations(db);
+
+      for (const migration of MIGRATIONS) {
+        if (applied.has(migration.id)) {
+          continue;
+        }
+
+        await applyMigration(db, migration);
+      }
     })();
 
     schemaInitPromise.catch(() => {
