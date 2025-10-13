@@ -10,6 +10,24 @@ export default defineConfig(({ mode }) => {
   const resolvedPublishableKey =
     env.VITE_CLERK_PUBLISHABLE_KEY || env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || "";
 
+  const inspectorDisabledValue =
+    env.VITE_CLOUDFLARE_INSPECTOR_DISABLED ?? env.CLOUDFLARE_INSPECTOR_DISABLED ?? "";
+  const inspectorDisabled = /^(1|true|yes|on)$/i.test(inspectorDisabledValue.trim());
+
+  const inspectorPortValue = env.VITE_CLOUDFLARE_INSPECTOR_PORT ?? env.CLOUDFLARE_INSPECTOR_PORT;
+  const parsedInspectorPort = Number.parseInt(inspectorPortValue ?? "", 10);
+  const inspectorPort = Number.isInteger(parsedInspectorPort) && parsedInspectorPort > 0
+    ? parsedInspectorPort
+    : undefined;
+
+  const cloudflareOptions: Record<string, unknown> = {};
+
+  if (inspectorDisabled) {
+    cloudflareOptions.inspectorPort = false;
+  } else if (inspectorPort !== undefined) {
+    cloudflareOptions.inspectorPort = inspectorPort;
+  }
+
   return {
     define: {
       "import.meta.env.VITE_CLERK_PUBLISHABLE_KEY": JSON.stringify(resolvedPublishableKey),
@@ -19,9 +37,7 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       react(),
-      cloudflare({
-        inspectorPort: false,
-      }),
+      cloudflare(cloudflareOptions),
     ],
     server: {
       allowedHosts: true,

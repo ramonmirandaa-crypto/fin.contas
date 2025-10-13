@@ -10,6 +10,11 @@ npm install
 npm run dev
 ```
 
+> **Need to run behind a restrictive proxy?**
+> Set `VITE_CLOUDFLARE_INSPECTOR_DISABLED=true` before `npm run dev` to disable the
+> Cloudflare Inspector WebSocket handshake. You can also pick a custom inspector port by
+> defining `VITE_CLOUDFLARE_INSPECTOR_PORT` (defaults to the plugin's built-in value).
+
 ### Autenticação Clerk
 
 Configure as seguintes variáveis de ambiente (veja `.env.example`):
