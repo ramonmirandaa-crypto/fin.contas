@@ -26,7 +26,7 @@ O `publishable key` (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`) é utilizado no front-
 e o `secret key` mantém a validação de sessões no Worker.
 O build Vite reaproveita automaticamente `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`; mantenha `VITE_CLERK_PUBLISHABLE_KEY` apenas se ainda utilizar scripts legados ou fluxos específicos que o exijam.
 `VITE_API_BASE_URL` é opcional; defina-o quando o Worker estiver hospedado em um domínio diferente para que o front-end consiga chamar a API.
-Quando a aplicação é servida a partir dos domínios públicos (`fincontas.ramonma.online` ou `contas.ramonma.online`), o bundle redireciona automaticamente chamadas a `/api/*` e métodos mutadores para o Worker hospedado na Cloudflare, evitando que o host estático intercepte `POST/PUT/DELETE`.
+Quando a aplicação é servida a partir do domínio público (`fincontas.ramonma.online`), o bundle redireciona automaticamente chamadas a `/api/*` e métodos mutadores para o Worker hospedado na Cloudflare, evitando que o host estático intercepte `POST/PUT/DELETE`.
 
 ### Prisma tooling
 

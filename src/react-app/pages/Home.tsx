@@ -12,7 +12,6 @@ import {
   PieChart,
   Plus,
   RefreshCw,
-  ShieldCheck,
   TrendingUp,
   UserCircle,
   Wallet,
@@ -750,124 +749,100 @@ export default function Home() {
     }
   }
 
-  const homeView = (
-    <>
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-semibold text-emerald-600">
-            {firstName ? `Olá, ${firstName}!` : 'Bem-vindo!'}
-          </p>
-          <h1 className="mt-1 text-2xl font-semibold text-slate-900">
-            Controle total do seu financeiro.
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Cadastre lançamentos, acompanhe cartões e conecte suas contas em minutos.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleRefreshFinanceSummary}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-100 bg-white text-emerald-600 shadow-sm transition hover:border-emerald-200 hover:text-emerald-700"
-          >
-            <RefreshCw className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setActivePrimaryView('reports')}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-100 bg-white text-emerald-600 shadow-sm transition hover:border-emerald-200 hover:text-emerald-700"
-          >
-            <Bell className="h-4 w-4" />
-          </button>
-          <AuthButton />
-        </div>
-      </header>
-
-      <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-500 to-emerald-600 p-6 text-white shadow-lg">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-white/70">
-              Seu próximo passo
-            </p>
-            <h2 className="mt-2 text-2xl font-semibold">Centralize suas contas em poucos cliques</h2>
-            <p className="mt-2 max-w-sm text-sm text-white/80">
-              Vincule seus bancos, organize lançamentos e receba alertas personalizados.
-            </p>
-          </div>
-          <TrendingUp className="hidden h-16 w-16 text-white/60 sm:block" />
-        </div>
-        <div className="mt-5 flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={() => handleOpenOverlay('accounts')}
-            className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-emerald-600 shadow transition hover:bg-emerald-50"
-          >
-            <Mail className="h-4 w-4" />
-            Vincular e-mail à conta
-          </button>
-          <button
-            type="button"
-            onClick={() => handleOpenOverlay('banking')}
-            className="inline-flex items-center gap-2 rounded-full border border-white/50 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/20"
-          >
-            <Zap className="h-4 w-4" />
-            Conectar Open Finance
-          </button>
-        </div>
-      </section>
-
-      <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {homeSummaryCards.map(card => (
-          <button
-            key={card.id}
-            type="button"
-            onClick={card.action}
-            className="group flex flex-col gap-2 rounded-3xl bg-white p-4 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
-          >
-            <span className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-500">
-              {card.label}
-            </span>
-            <span className="text-2xl font-semibold text-slate-900">{card.value}</span>
-            <span className="text-xs text-slate-500">{card.helper}</span>
-          </button>
-        ))}
-      </section>
-
-      <section className="overflow-hidden rounded-3xl bg-white p-6 shadow-sm">
-        <div className="flex items-start gap-4">
-          <div className="rounded-2xl bg-emerald-100 p-3 text-emerald-600">
-            <ShieldCheck className="h-6 w-6" />
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-500">
-              Administre Pro
-            </p>
-            <h2 className="mt-2 text-lg font-semibold text-slate-900">
-              Assine o Premium por R$ 29,90/mensal
-            </h2>
-            <p className="mt-2 text-sm text-slate-500">
-              Desbloqueie dashboards avançados, previsões e relatórios automáticos para o seu negócio.
-            </p>
-            <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-500">
-              <span className="rounded-full bg-slate-100 px-3 py-1">Painéis dinâmicos</span>
-              <span className="rounded-full bg-slate-100 px-3 py-1">Alertas inteligentes</span>
-              <span className="rounded-full bg-slate-100 px-3 py-1">Exportação de dados</span>
-            </div>
-          </div>
-        </div>
+  const headerSection = (
+    <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <p className="text-sm font-semibold text-emerald-600">
+          {firstName ? `Olá, ${firstName}!` : 'Bem-vindo!'}
+        </p>
+        <h1 className="mt-1 text-2xl font-semibold text-slate-900">
+          Controle total do seu financeiro.
+        </h1>
+        <p className="mt-1 text-sm text-slate-500">
+          Cadastre lançamentos, acompanhe cartões e conecte suas contas em minutos.
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={() => handleOpenOverlay('analytics')}
-          className="mt-6 inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-emerald-600"
+          onClick={handleRefreshFinanceSummary}
+          className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-100 bg-white text-emerald-600 shadow-sm transition hover:border-emerald-200 hover:text-emerald-700"
         >
-          Conhecer planos
+          <RefreshCw className="h-4 w-4" />
         </button>
-      </section>
+        <button
+          type="button"
+          onClick={() => setActivePrimaryView('reports')}
+          className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-100 bg-white text-emerald-600 shadow-sm transition hover:border-emerald-200 hover:text-emerald-700"
+        >
+          <Bell className="h-4 w-4" />
+        </button>
+        <AuthButton />
+      </div>
+    </header>
+  );
 
-      <section className="rounded-3xl bg-white p-6 shadow-sm">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">Meus cartões</h2>
+  const heroSection = (
+    <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-500 to-emerald-600 p-6 text-white shadow-lg">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="max-w-xl">
+          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-white/70">
+            Seu próximo passo
+          </p>
+          <h2 className="mt-2 text-2xl font-semibold lg:text-3xl">
+            Centralize suas contas em poucos cliques
+          </h2>
+          <p className="mt-2 text-sm text-white/80">
+            Vincule seus bancos, organize lançamentos e receba alertas personalizados.
+          </p>
+        </div>
+        <TrendingUp className="hidden h-16 w-16 text-white/60 lg:block" />
+      </div>
+      <div className="mt-5 flex flex-wrap gap-3">
+        <button
+          type="button"
+          onClick={() => handleOpenOverlay('accounts')}
+          className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-emerald-600 shadow transition hover:bg-emerald-50"
+        >
+          <Mail className="h-4 w-4" />
+          Vincular e-mail à conta
+        </button>
+        <button
+          type="button"
+          onClick={() => handleOpenOverlay('banking')}
+          className="inline-flex items-center gap-2 rounded-full border border-white/50 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/20"
+        >
+          <Zap className="h-4 w-4" />
+          Conectar Open Finance
+        </button>
+      </div>
+    </section>
+  );
+
+  const summarySection = (
+    <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {homeSummaryCards.map(card => (
+        <button
+          key={card.id}
+          type="button"
+          onClick={card.action}
+          className="group flex flex-col gap-2 rounded-3xl bg-white p-4 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
+        >
+          <span className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-500">
+            {card.label}
+          </span>
+          <span className="text-2xl font-semibold text-slate-900">{card.value}</span>
+          <span className="text-xs text-slate-500">{card.helper}</span>
+        </button>
+      ))}
+    </section>
+  );
+
+  const cardsSection = (
+    <section className="rounded-3xl bg-white p-6 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Meus cartões</h2>
             <p className="text-sm text-slate-500">
               Controle limites, faturas e vínculos em tempo real.
             </p>
@@ -975,11 +950,13 @@ export default function Home() {
           )}
         </div>
       </section>
+  );
 
-      <section className="rounded-3xl bg-white p-6 shadow-sm">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">Minhas contas</h2>
+  const accountsSection = (
+    <section className="rounded-3xl bg-white p-6 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Minhas contas</h2>
             <p className="text-sm text-slate-500">
               Saldos consolidados e sincronizações do Open Finance.
             </p>
@@ -1082,11 +1059,13 @@ export default function Home() {
           )}
         </div>
       </section>
+  );
 
-      <section className="mb-4 rounded-3xl bg-white p-6 shadow-sm">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold text-slate-900">Transações recentes</h2>
+  const transactionsSection = (
+    <section className="mb-4 rounded-3xl bg-white p-6 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Transações recentes</h2>
             <p className="text-sm text-slate-500">
               Cadastre manualmente ou importe via Open Finance.
             </p>
@@ -1138,11 +1117,25 @@ export default function Home() {
             className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-emerald-200 hover:text-emerald-600"
           >
             <Zap className="h-4 w-4" />
-            Importar pelo Open Finance
-          </button>
+          Importar pelo Open Finance
+        </button>
         </div>
       </section>
-    </>
+  );
+
+  const homeView = (
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.9fr)] xl:grid-cols-[minmax(0,1.3fr)_minmax(360px,0.9fr)]">
+      <div className="flex flex-col gap-6">
+        {headerSection}
+        {heroSection}
+        {summarySection}
+        {transactionsSection}
+      </div>
+      <div className="flex flex-col gap-6">
+        {cardsSection}
+        {accountsSection}
+      </div>
+    </div>
   );
 
   const reportsView = (
@@ -1276,12 +1269,12 @@ export default function Home() {
 
   return (
     <div className="relative min-h-screen bg-slate-50 pb-24 text-slate-900">
-      <main className="mx-auto flex min-h-screen max-w-md flex-col gap-6 px-4 pb-32 pt-12 sm:max-w-2xl sm:px-6">
+      <main className="mx-auto min-h-screen w-full max-w-6xl px-4 pb-32 pt-12 sm:px-6 lg:px-8 xl:px-12">
         {activePrimaryView === 'home' ? homeView : reportsView}
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
-        <div className="mx-auto flex max-w-md items-center justify-between gap-2 sm:max-w-2xl">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-2 sm:px-2 lg:px-4">
           {bottomNavItems.map(item => {
             const Icon = item.icon;
             if (item.accent) {

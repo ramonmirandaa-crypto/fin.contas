@@ -13,11 +13,9 @@ const sanitizedBaseUrl = rawBaseUrl ? stripTrailingSlashes(rawBaseUrl.trim()) : 
 
 const WORKER_FALLBACK_ORIGINS = [
   'https://0199711a-c4e4-7884-86f1-522b7cf5b5f9.n5jcegoubmvau.workers.dev',
-  'https://n5jcegoubmvau.mocha.app',
 ] as const;
 
 const PRODUCTION_FALLBACKS: Record<string, readonly string[]> = {
-  'contas.ramonma.online': WORKER_FALLBACK_ORIGINS,
   'fincontas.ramonma.online': WORKER_FALLBACK_ORIGINS,
 };
 
