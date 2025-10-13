@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="50%" stop-color="#0b8a6b"/>
+      <stop offset="100%" stop-color="#10b981"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ecfdf5" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#d1fae5" stop-opacity="0.65"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="20" result="blur"/>
+      <feOffset dy="24" result="offset"/>
+      <feMerge>
+        <feMergeNode in="offset"/>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <g transform="translate(120, 150)" filter="url(#shadow)">
+    <rect width="520" height="320" rx="32" fill="url(#card)"/>
+    <text x="60" y="140" fill="#0f172a" font-family="'Inter', 'Segoe UI', sans-serif" font-size="48" font-weight="700">
+      Controle total das finanças
+    </text>
+    <text x="60" y="200" fill="#065f46" font-family="'Inter', 'Segoe UI', sans-serif" font-size="28" font-weight="500">
+      Dashboard privado · Open Finance · Despesas
+    </text>
+    <g transform="translate(60, 230)">
+      <rect width="180" height="72" rx="20" fill="#10b981"/>
+      <text x="32" y="45" fill="#ecfdf5" font-family="'Inter', 'Segoe UI', sans-serif" font-size="28" font-weight="700">
+        FinContas
+      </text>
+    </g>
+  </g>
+
+  <g transform="translate(720, 140)">
+    <rect x="0" y="0" width="360" height="220" rx="28" fill="rgba(15, 23, 42, 0.55)"/>
+    <text x="40" y="90" fill="#ecfeff" font-family="'Inter', 'Segoe UI', sans-serif" font-size="42" font-weight="600">
+      Saldo atual
+    </text>
+    <text x="40" y="150" fill="#a7f3d0" font-family="'Inter', 'Segoe UI', sans-serif" font-size="52" font-weight="700">
+      R$ 24.580,12
+    </text>
+  </g>
+
+  <text x="120" y="540" fill="#d1fae5" font-family="'Inter', 'Segoe UI', sans-serif" font-size="28" font-weight="500">
+    fincontas.ramonma.online · Seu hub pessoal de finanças
+  </text>
+</svg>

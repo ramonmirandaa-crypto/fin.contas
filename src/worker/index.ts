@@ -72,9 +72,8 @@ const getClerkClient = (env: Env) => {
 // Enhanced CORS configuration
 app.use('*', cors({
   origin: [
-    'https://n5jcegoubmvau.mocha.app',
+    'https://0199711a-c4e4-7884-86f1-522b7cf5b5f9.n5jcegoubmvau.workers.dev',
     'http://localhost:5173',
-    'https://contas.ramonma.online',
     'https://fincontas.ramonma.online',
   ],
   allowHeaders: ['Content-Type', 'Authorization'],
