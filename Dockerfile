@@ -20,6 +20,7 @@ COPY --from=deps /app/node_modules ./node_modules
 RUN npm prune --omit=dev
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/scripts ./scripts
+COPY --from=build /app/prisma ./prisma
 RUN chown -R node:node /app
 USER node
 EXPOSE 4173
