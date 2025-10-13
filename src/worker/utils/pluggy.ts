@@ -86,15 +86,13 @@ export const updatePluggyConnectionMetadata = async (
   addNullableUpdate('org_domain', updates.orgDomain);
 
   if ('lastSyncAt' in updates) {
-    if (updates.lastSyncAt === 'now') {
+    const lastSyncAt = updates.lastSyncAt;
+
+    if (lastSyncAt === 'now') {
       setClauses.push("last_sync_at = datetime('now')");
     } else {
       setClauses.push('last_sync_at = ?');
-      if (updates.lastSyncAt !== null) {
-        values.push(updates.lastSyncAt);
-      } else {
-        values.push(null);
-      }
+      values.push(lastSyncAt ?? null);
     }
   }
 
