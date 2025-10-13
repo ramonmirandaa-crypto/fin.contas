@@ -4,6 +4,7 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { createClerkClient, type ClerkClient } from '@clerk/backend';
 import { PluggyClient, mapPluggyCategory } from './pluggy-improved';
+import { ensureDatabaseSchema } from './database';
 
 type TransactionType = 'income' | 'expense' | 'transfer';
 type StringFilter = { contains: string; mode: 'insensitive' };
@@ -93,6 +94,17 @@ const expenseSchema = z.object({
 const errorResponse = (message: string, status = 400) => {
   return Response.json({ error: message }, { status });
 };
+
+app.use('*', async (c, next) => {
+  try {
+    await ensureDatabaseSchema(c.env.DB);
+  } catch (error) {
+    console.error('Failed to ensure database schema:', error);
+    return errorResponse('Database not ready', 500);
+  }
+
+  await next();
+});
 
 const preflightResponse = (origin: string | null | undefined, allowMethods: string[]) => {
   const headers = new Headers({
