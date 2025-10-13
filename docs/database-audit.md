@@ -2,7 +2,7 @@
 
 ## Stack e esquema atuais
 - O Worker Hono utiliza exclusivamente o binding D1 com consultas SQL, e o esquema oficial está versionado em migrations D1 (`migrations/0001_initial.sql`).
-- O template de variáveis expõe `DATABASE_URL` apontando para `file:./prisma/dev.db`, além das chaves do Clerk utilizadas tanto no front-end quanto no Worker.【F:.env.example†L1-L11】
+- O template de variáveis agora define `DATABASE_URL` para um Postgres padrão (`postgresql://postgres:postgres@postgres:5432/fincontas?schema=public`), além das chaves do Clerk utilizadas tanto no front-end quanto no Worker.【F:.env.example†L1-L11】
 - A configuração do Wrangler já vincula o binding `DB` a uma instância Cloudflare D1, garantindo a disponibilidade do banco no Worker.【F:wrangler.jsonc†L1-L20】
 
 ## Rotinas de persistência
@@ -10,7 +10,7 @@
 - O bootstrap do esquema ocorre via migrations D1 oficiais e não há execução de `prisma migrate` no build do Worker.
 
 ## Configurações existentes
-- O README documenta a preparação do Prisma local (`prisma migrate dev`/`generate`) e orienta exportar `DATABASE_URL`, chaves Clerk, API base do Worker, Pluggy e OpenAI nos ambientes de build/execução.【F:README.md†L13-L71】
+- O README documenta a preparação do Prisma com PostgreSQL (`docker run postgres:15`, `prisma migrate dev`, `prisma generate`) e orienta exportar `DATABASE_URL`, chaves Clerk, API base do Worker, Pluggy e OpenAI nos ambientes de build/execução.【F:README.md†L13-L88】
 - Não há variáveis específicas para o D1 além do binding do Wrangler; a sincronização D1 ↔ Prisma depende de scripts internos do Worker.
 
 ## Lacunas e riscos identificados
