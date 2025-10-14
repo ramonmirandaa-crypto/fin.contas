@@ -132,12 +132,12 @@ export const createCorsMiddleware = (env: Env): MiddlewareHandler<{ Bindings: En
 
   return cors({
     origin: (origin, c) => {
+      const requestOrigin = extractOriginFromUrl(c.req.url);
       if (!origin) {
-        return true;
+        return null;
       }
 
-      const requestOrigin = extractOriginFromUrl(c.req.url);
-      return shouldAllowOrigin(origin, allowedOrigins, requestOrigin) ? origin : false;
+      return shouldAllowOrigin(origin, allowedOrigins, requestOrigin) ? origin : null;
     },
     allowHeaders: ['Content-Type', 'Authorization'],
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
