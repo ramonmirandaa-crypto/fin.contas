@@ -12,6 +12,7 @@
 ## Configurações existentes
 - O README documenta a preparação do Prisma com PostgreSQL (`docker run postgres:15`, `prisma migrate dev`, `prisma generate`) e orienta exportar `DATABASE_URL`, chaves Clerk, API base do Worker, Pluggy e OpenAI nos ambientes de build/execução.【F:README.md†L13-L88】
 - Não há variáveis específicas para o D1 além do binding do Wrangler; a sincronização D1 ↔ Prisma depende de scripts internos do Worker.
+- A trilha de migrations do Prisma agora replica as tabelas de finanças (cartões, investimentos, empréstimos, faturas e categorias) por meio do arquivo `202503190001_add_credit_cards_and_related`, eliminando os erros de `relation "credit_cards" does not exist` observados anteriormente.【F:prisma/migrations/202503190001_add_credit_cards_and_related/migration.sql†L1-L86】
 
 ## Lacunas e riscos identificados
 1. **Fonte única de verdade** – Com as rotas migradas para D1 e migrations oficiais versionadas, o Worker e o banco compartilham o mesmo contrato de dados. Ainda é importante manter o esquema em SQL sincronizado com qualquer documentação ou artefatos restantes de Prisma para evitar confusão histórica.

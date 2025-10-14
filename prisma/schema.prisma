@@ -115,9 +115,13 @@ model Account {
   quantity                     Decimal?          @db.Decimal(18, 6)
   unit_price                   Decimal?          @db.Decimal(18, 6)
 
-  transactions Transaction[]
-  budgets      Budget[]
-  goals        Goal[]
+  transactions       Transaction[]
+  budgets            Budget[]
+  goals              Goal[]
+  credit_cards       CreditCard[]
+  investments        Investment[]
+  loans              Loan[]
+  credit_card_bills  CreditCardBill[]
 
   @@map("accounts")
   @@index([user_id])
@@ -181,6 +185,74 @@ model Expense {
   @@unique([user_id, pluggy_transaction_id], map: "expenses_user_id_pluggy_transaction_id_key")
 }
 
+model CreditCard {
+  id                Int      @id @default(autoincrement())
+  user_id           String
+  linked_account_id Int?
+  name              String
+  credit_limit      Decimal  @default(0) @db.Decimal(18, 2)
+  current_balance   Decimal  @default(0) @db.Decimal(18, 2)
+  due_day           Int      @default(1)
+  closing_day       Int?
+  issuer            String?
+  brand             String?
+  is_virtual        Boolean? @default(false)
+  status            String?
+  last_synced_at    DateTime?
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  linked_account Account? @relation(fields: [linked_account_id], references: [id], onDelete: SetNull)
+
+  @@map("credit_cards")
+  @@index([user_id], map: "idx_credit_cards_user")
+}
+
+model Investment {
+  id                   Int      @id @default(autoincrement())
+  user_id              String
+  account_id           Int?
+  name                 String
+  type                 String
+  amount               Decimal  @db.Decimal(18, 2)
+  purchase_date        DateTime?
+  current_value        Decimal? @db.Decimal(18, 2)
+  expected_return_rate Decimal? @db.Decimal(10, 4)
+  risk_level           String?
+  institution_name     String?
+  notes                String?
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+
+  account Account? @relation(fields: [account_id], references: [id], onDelete: SetNull)
+
+  @@map("investments")
+  @@index([user_id], map: "idx_investments_user")
+}
+
+model Loan {
+  id                Int      @id @default(autoincrement())
+  user_id           String
+  account_id        Int?
+  name              String
+  principal_amount  Decimal  @db.Decimal(18, 2)
+  interest_rate     Decimal  @db.Decimal(10, 4)
+  start_date        DateTime
+  end_date          DateTime?
+  monthly_payment   Decimal  @db.Decimal(18, 2)
+  remaining_balance Decimal  @db.Decimal(18, 2)
+  lender            String?
+  status            String?
+  notes             String?
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  account Account? @relation(fields: [account_id], references: [id], onDelete: SetNull)
+
+  @@map("loans")
+  @@index([user_id], map: "idx_loans_user")
+}
+
 model Budget {
   id            Int       @id @default(autoincrement())
   user_id       String
@@ -224,6 +296,38 @@ model Goal {
   @@index([user_id])
 }
 
+model CreditCardBill {
+  id                    Int      @id @default(autoincrement())
+  user_id               String
+  account_id            Int?
+  pluggy_bill_id        String?
+  closing_date          DateTime?
+  due_date              DateTime?
+  total_amount          Decimal  @default(0) @db.Decimal(18, 2)
+  minimum_payment       Decimal  @default(0) @db.Decimal(18, 2)
+  previous_bill_balance Decimal  @default(0) @db.Decimal(18, 2)
+  paid_amount           Decimal  @default(0) @db.Decimal(18, 2)
+  payment_date          DateTime?
+  is_fully_paid         Boolean  @default(false)
+  interest_rate         Decimal? @db.Decimal(10, 4)
+  late_fee              Decimal  @default(0) @db.Decimal(18, 2)
+  annual_fee            Decimal  @default(0) @db.Decimal(18, 2)
+  international_fee     Decimal  @default(0) @db.Decimal(18, 2)
+  bill_status           String?
+  currency_code         String   @default("BRL")
+  bill_month            Int?
+  bill_year             Int?
+  pluggy_created_at     DateTime?
+  pluggy_updated_at     DateTime?
+  created_at            DateTime @default(now())
+  updated_at            DateTime @updatedAt
+
+  account Account? @relation(fields: [account_id], references: [id], onDelete: SetNull)
+
+  @@map("credit_card_bills")
+  @@index([user_id], map: "idx_credit_card_bills_user")
+}
+
 model UserConfig {
   id           Int      @id @default(autoincrement())
   user_id      String
@@ -260,6 +364,25 @@ model PluggyConnection {
   @@map("pluggy_connections")
   @@unique([user_id, pluggy_item_id])
   @@index([user_id], map: "idx_pluggy_connections_user")
+}
+
+model TransactionCategory {
+  id          Int       @id @default(autoincrement())
+  user_id     String
+  name        String
+  color       String?
+  description String?
+  keywords    String?
+  parent_id   Int?
+  is_default  Boolean   @default(false)
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+
+  parent   TransactionCategory? @relation("TransactionCategoryHierarchy", fields: [parent_id], references: [id], onDelete: SetNull)
+  children TransactionCategory[] @relation("TransactionCategoryHierarchy")
+
+  @@map("transaction_categories")
+  @@index([user_id], map: "idx_transaction_categories_user")
 }
 
 model WebhookConfig {

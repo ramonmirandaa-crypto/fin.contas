@@ -2433,7 +2433,7 @@ app.post('/api/pluggy/sync/:itemId?', authMiddleware, async (c) => {
     console.log(`[${syncId}] Found ${connectionsToSync.length} connections to sync`);
 
     let totalNewTransactions = 0;
-    let errors: string[] = [];
+    const errors: string[] = [];
     
     for (const connection of connectionsToSync) {
       try {
