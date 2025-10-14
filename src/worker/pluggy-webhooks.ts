@@ -65,9 +65,11 @@ export type WebhookConfig = z.infer<typeof WebhookConfigSchema>;
 export class PluggyWebhookProcessor {
   private db: any;
   private pluggyClients: Map<string, PluggyClient> = new Map();
+  private env: { PLUGGY_CLIENT_ID?: string; PLUGGY_CLIENT_SECRET?: string };
 
-  constructor(db: any) {
+  constructor(db: any, env?: { PLUGGY_CLIENT_ID?: string; PLUGGY_CLIENT_SECRET?: string }) {
     this.db = db;
+    this.env = env ?? {};
   }
 
   // Get or create Pluggy client for a specific user
@@ -81,12 +83,15 @@ export class PluggyWebhookProcessor {
       const clientIdRow = await stmt.bind(userId, 'pluggy_client_id').first();
       const clientSecretRow = await stmt.bind(userId, 'pluggy_client_secret').first();
 
-      if (!clientIdRow?.config_value || !clientSecretRow?.config_value) {
+      const clientId = clientIdRow?.config_value || this.env.PLUGGY_CLIENT_ID || '';
+      const clientSecret = clientSecretRow?.config_value || this.env.PLUGGY_CLIENT_SECRET || '';
+
+      if (!clientId || !clientSecret) {
         console.log(`No Pluggy credentials found for user ${userId}`);
         return null;
       }
 
-      const client = new PluggyClient(clientIdRow.config_value, clientSecretRow.config_value);
+      const client = new PluggyClient(clientId, clientSecret);
       this.pluggyClients.set(userId, client);
       return client;
     } catch (error) {
@@ -718,7 +723,7 @@ export class PluggyWebhookProcessor {
 
       // Use loan sync service instead
       const { LoanSyncService } = await import('./loans-sync');
-      const loanService = new LoanSyncService(this.db);
+      const loanService = new LoanSyncService(this.db, this.env);
       await loanService.syncLoansForUser(userId);
 
       return {
