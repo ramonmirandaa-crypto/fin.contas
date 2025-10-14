@@ -65,6 +65,7 @@ FinContas é um gerenciador financeiro moderno que combina um front-end React co
 | `DATABASE_URL` | runtime | String de conexão PostgreSQL consumida pelo Prisma. |
 | `OPENAI_API_KEY` | runtime (opcional) | Necessário para recursos de insights por IA. |
 | `PLUGGY_CLIENT_ID` e `PLUGGY_CLIENT_SECRET` | runtime (opcional) | Credenciais para sincronização bancária via Pluggy. |
+| `ALLOWED_ORIGINS` | runtime (worker) | Lista separada por vírgulas de origens adicionais autorizadas no CORS. |
 
 ## Prisma & Banco de dados
 - Para aplicar migrations em produção execute `npx prisma migrate deploy` apontando para o banco configurado.
