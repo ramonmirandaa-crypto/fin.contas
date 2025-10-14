@@ -880,7 +880,7 @@ export class PluggyWebhookProcessor {
       const fromDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // Last 90 days
       const billsWithTransactions = await pluggyClient.getAllCreditCardTransactions(itemId, fromDate);
       
-      for (const { bill, transactions: _transactions } of billsWithTransactions) {
+      for (const { bill } of billsWithTransactions) {
         // Check if bill already exists
         const existingBillStmt = this.db.prepare("SELECT id FROM credit_card_bills WHERE pluggy_bill_id = ? AND user_id = ?");
         const existing = await existingBillStmt.bind(bill.id, userId).first();
