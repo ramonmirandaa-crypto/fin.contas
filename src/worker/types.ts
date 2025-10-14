@@ -7,6 +7,7 @@ export interface Env {
   CLERK_SECRET_KEY: string;
   PLUGGY_CLIENT_ID: string;
   PLUGGY_CLIENT_SECRET: string;
+  ALLOWED_ORIGINS?: string;
 }
 
 export type AuthRequestState = Awaited<ReturnType<ClerkClient['authenticateRequest']>>;

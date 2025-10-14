@@ -1,5 +1,4 @@
 import { Hono } from 'hono';
-import { cors } from 'hono/cors';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { PluggyClient, mapPluggyCategory } from './pluggy-improved';
@@ -28,6 +27,7 @@ import {
   toBoolean,
 } from './utils/formatters';
 import { getUserConfigValue, upsertUserConfigValue } from './utils/user-configs';
+import { createCorsMiddleware } from './utils/origin';
 
 type TransactionType = 'income' | 'expense' | 'transfer';
 type StringFilter = { contains: string; mode: 'insensitive' };
@@ -54,17 +54,11 @@ type TransactionWhere = {
 
 const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
 
-// Enhanced CORS configuration
-app.use('*', cors({
-  origin: [
-    'https://0199711a-c4e4-7884-86f1-522b7cf5b5f9.n5jcegoubmvau.workers.dev',
-    'http://localhost:5173',
-    'https://fincontas.ramonma.online',
-  ],
-  allowHeaders: ['Content-Type', 'Authorization'],
-  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  credentials: true,
-}));
+// Enhanced CORS configuration with dynamic allow-list support
+app.use('*', (c, next) => {
+  const corsMiddleware = createCorsMiddleware(c.env);
+  return corsMiddleware(c, next);
+});
 
 // Validation schemas
 const expenseSchema = z.object({
@@ -90,7 +84,9 @@ const pluggyTransactionsRequestSchema = z.object({
   startDate: z.string().optional()
 });
 
-app.options('/api/pluggy/status', (c) => preflightResponse(c.req.header('Origin'), ['POST', 'OPTIONS']));
+app.options('/api/pluggy/status', (c) =>
+  preflightResponse(c.req.header('Origin'), ['POST', 'OPTIONS'], c.env, c.req.url),
+);
 
 app.post('/api/pluggy/status', authMiddleware, async (c) => {
   const userId = getUserId(c);
@@ -129,7 +125,9 @@ app.post('/api/pluggy/status', authMiddleware, async (c) => {
   }
 });
 
-app.options('/api/pluggy/accounts', (c) => preflightResponse(c.req.header('Origin'), ['POST', 'OPTIONS']));
+app.options('/api/pluggy/accounts', (c) =>
+  preflightResponse(c.req.header('Origin'), ['POST', 'OPTIONS'], c.env, c.req.url),
+);
 
 app.post('/api/pluggy/accounts', authMiddleware, async (c) => {
   const userId = getUserId(c);
@@ -199,7 +197,9 @@ app.post('/api/pluggy/accounts', authMiddleware, async (c) => {
   }
 });
 
-app.options('/api/pluggy/transactions', (c) => preflightResponse(c.req.header('Origin'), ['POST', 'OPTIONS']));
+app.options('/api/pluggy/transactions', (c) =>
+  preflightResponse(c.req.header('Origin'), ['POST', 'OPTIONS'], c.env, c.req.url),
+);
 
 app.post('/api/pluggy/transactions', authMiddleware, async (c) => {
   const userId = getUserId(c);
@@ -2168,7 +2168,9 @@ app.get('/api/pluggy/connections', authMiddleware, async (c) => {
   }
 });
 
-app.options('/api/pluggy/config', (c) => preflightResponse(c.req.header('Origin'), ['GET', 'POST', 'OPTIONS']));
+app.options('/api/pluggy/config', (c) =>
+  preflightResponse(c.req.header('Origin'), ['GET', 'POST', 'OPTIONS'], c.env, c.req.url),
+);
 
 app.get('/api/pluggy/config', authMiddleware, async (c) => {
   const userId = getUserId(c);
@@ -2232,7 +2234,9 @@ app.post('/api/pluggy/config', authMiddleware, async (c) => {
   }
 });
 
-app.options('/api/pluggy/test-connection', (c) => preflightResponse(c.req.header('Origin'), ['POST', 'OPTIONS']));
+app.options('/api/pluggy/test-connection', (c) =>
+  preflightResponse(c.req.header('Origin'), ['POST', 'OPTIONS'], c.env, c.req.url),
+);
 
 app.post('/api/pluggy/test-connection', authMiddleware, async (c) => {
   try {
@@ -2259,7 +2263,9 @@ app.post('/api/pluggy/test-connection', authMiddleware, async (c) => {
   }
 });
 
-app.options('/api/pluggy/add-connection', (c) => preflightResponse(c.req.header('Origin'), ['POST', 'OPTIONS']));
+app.options('/api/pluggy/add-connection', (c) =>
+  preflightResponse(c.req.header('Origin'), ['POST', 'OPTIONS'], c.env, c.req.url),
+);
 
 app.post('/api/pluggy/add-connection', authMiddleware, async (c) => {
   const userId = getUserId(c);
@@ -2351,7 +2357,9 @@ app.post('/api/pluggy/add-connection', authMiddleware, async (c) => {
   }
 });
 
-app.options('/api/pluggy/connections/:id', (c) => preflightResponse(c.req.header('Origin'), ['DELETE', 'OPTIONS']));
+app.options('/api/pluggy/connections/:id', (c) =>
+  preflightResponse(c.req.header('Origin'), ['DELETE', 'OPTIONS'], c.env, c.req.url),
+);
 
 app.delete('/api/pluggy/connections/:id', authMiddleware, async (c) => {
   const userId = getUserId(c);
@@ -2372,7 +2380,9 @@ app.delete('/api/pluggy/connections/:id', authMiddleware, async (c) => {
   }
 });
 
-app.options('/api/pluggy/sync/:itemId?', (c) => preflightResponse(c.req.header('Origin'), ['POST', 'OPTIONS']));
+app.options('/api/pluggy/sync/:itemId?', (c) =>
+  preflightResponse(c.req.header('Origin'), ['POST', 'OPTIONS'], c.env, c.req.url),
+);
 
 app.post('/api/pluggy/sync/:itemId?', authMiddleware, async (c) => {
   const userId = getUserId(c);
@@ -2603,7 +2613,9 @@ app.get('/api/pluggy/webhook-config', authMiddleware, async (c) => {
   }
 });
 
-app.options('/api/pluggy/webhook-config', (c) => preflightResponse(c.req.header('Origin'), ['POST', 'OPTIONS']));
+app.options('/api/pluggy/webhook-config', (c) =>
+  preflightResponse(c.req.header('Origin'), ['POST', 'OPTIONS'], c.env, c.req.url),
+);
 
 app.post('/api/pluggy/webhook-config', authMiddleware, async (c) => {
   const userId = getUserId(c);
@@ -2643,7 +2655,9 @@ app.post('/api/pluggy/webhook-config', authMiddleware, async (c) => {
   }
 });
 
-app.options('/api/pluggy/test-webhook', (c) => preflightResponse(c.req.header('Origin'), ['POST', 'OPTIONS']));
+app.options('/api/pluggy/test-webhook', (c) =>
+  preflightResponse(c.req.header('Origin'), ['POST', 'OPTIONS'], c.env, c.req.url),
+);
 
 app.post('/api/pluggy/test-webhook', authMiddleware, async (c) => {
   const userId = getUserId(c);
