@@ -11,9 +11,11 @@ export interface LoanSyncResult {
 
 export class LoanSyncService {
   private db: any;
+  private env: { PLUGGY_CLIENT_ID?: string; PLUGGY_CLIENT_SECRET?: string };
 
-  constructor(db: any) {
+  constructor(db: any, env?: { PLUGGY_CLIENT_ID?: string; PLUGGY_CLIENT_SECRET?: string }) {
     this.db = db;
+    this.env = env ?? {};
   }
 
   async syncLoansForUser(userId: string): Promise<LoanSyncResult> {
@@ -34,7 +36,10 @@ export class LoanSyncService {
       const clientIdRow = await stmt.bind(userId, 'pluggy_client_id').first();
       const clientSecretRow = await stmt.bind(userId, 'pluggy_client_secret').first();
 
-      if (!clientIdRow?.config_value || !clientSecretRow?.config_value) {
+      const clientId = clientIdRow?.config_value || this.env.PLUGGY_CLIENT_ID || '';
+      const clientSecret = clientSecretRow?.config_value || this.env.PLUGGY_CLIENT_SECRET || '';
+
+      if (!clientId || !clientSecret) {
         console.log(`No Pluggy credentials found for user ${userId}`);
         result.errors.push('No Pluggy credentials found');
         result.success = true; // This is not an error, just no credentials set up
@@ -43,7 +48,7 @@ export class LoanSyncService {
 
       let pluggyClient: PluggyClient;
       try {
-        pluggyClient = new PluggyClient(clientIdRow.config_value, clientSecretRow.config_value);
+        pluggyClient = new PluggyClient(clientId, clientSecret);
       } catch (clientError) {
         console.error(`Error creating Pluggy client for user ${userId}:`, clientError);
         result.errors.push(`Invalid Pluggy credentials: ${clientError instanceof Error ? clientError.message : String(clientError)}`);
