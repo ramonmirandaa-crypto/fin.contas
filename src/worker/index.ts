@@ -2264,6 +2264,10 @@ app.options('/api/pluggy/add-connection', (c) => preflightResponse(c.req.header(
 app.post('/api/pluggy/add-connection', authMiddleware, async (c) => {
   const userId = getUserId(c);
 
+  if (!userId) {
+    return errorResponse('Unauthorized', 401);
+  }
+
   try {
     const { itemId } = await c.req.json();
     
@@ -2271,14 +2275,12 @@ app.post('/api/pluggy/add-connection', authMiddleware, async (c) => {
       return errorResponse('Item ID is required', 400);
     }
 
-    const credentials = await getPluggyCredentials(c.env.DB, c.env, userId);
+    const client = await getPluggyClientForUser(c.env.DB, c.env, userId);
 
-    if (!credentials) {
+    if (!client) {
       return errorResponse('Pluggy credentials not configured', 400);
     }
 
-    const client = new PluggyClient(credentials.clientId, credentials.clientSecret);
-    
     // Get item details from Pluggy
     const item = await client.getItem(itemId.trim());
     
@@ -2376,15 +2378,19 @@ app.post('/api/pluggy/sync/:itemId?', authMiddleware, async (c) => {
   const userId = getUserId(c);
   const itemId = c.req.param('itemId');
 
+  if (!userId) {
+    return errorResponse('Unauthorized', 401);
+  }
+
   // Create a unique sync ID for logging
   const syncId = `sync-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
   try {
     console.log(`[${syncId}] Starting sync for user ${userId}, itemId: ${itemId || 'all'}`);
 
-    const credentials = await getPluggyCredentials(c.env.DB, c.env, userId);
+    const client = await getPluggyClientForUser(c.env.DB, c.env, userId);
 
-    if (!credentials) {
+    if (!client) {
       console.log(`[${syncId}] Pluggy credentials not configured`);
       return Response.json({
         success: false,
@@ -2396,7 +2402,6 @@ app.post('/api/pluggy/sync/:itemId?', authMiddleware, async (c) => {
 
     // Create Pluggy client
     console.log(`[${syncId}] Creating Pluggy client`);
-    const client = new PluggyClient(credentials.clientId, credentials.clientSecret);
     
     let connectionsToSync;
     

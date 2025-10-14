@@ -37,8 +37,19 @@ export const getPluggyCredentials = async (
     getUserConfigValue(db, userId, 'pluggy_client_secret'),
   ]);
 
-  const resolvedClientId = clientId || env.PLUGGY_CLIENT_ID || '';
-  const resolvedClientSecret = clientSecret || env.PLUGGY_CLIENT_SECRET || '';
+  const resolveCredential = (...values: Array<string | null | undefined>): string => {
+    for (const value of values) {
+      const trimmed = value?.trim();
+      if (trimmed) {
+        return trimmed;
+      }
+    }
+
+    return '';
+  };
+
+  const resolvedClientId: string = resolveCredential(clientId, env.PLUGGY_CLIENT_ID ?? null);
+  const resolvedClientSecret: string = resolveCredential(clientSecret, env.PLUGGY_CLIENT_SECRET ?? null);
 
   if (!resolvedClientId || !resolvedClientSecret) {
     return null;
@@ -47,7 +58,7 @@ export const getPluggyCredentials = async (
   return {
     clientId: resolvedClientId,
     clientSecret: resolvedClientSecret,
-  };
+  } as PluggyCredentials;
 };
 
 export const getPluggyClientForUser = async (db: D1Database, env: PluggyEnv, userId: string) => {
