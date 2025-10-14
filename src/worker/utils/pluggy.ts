@@ -1,6 +1,11 @@
 import { PluggyClient } from '../pluggy-improved';
 import { getUserConfigValue } from './user-configs';
 
+type PluggyEnv = {
+  PLUGGY_CLIENT_ID?: string;
+  PLUGGY_CLIENT_SECRET?: string;
+};
+
 export type PluggyCredentials = {
   clientId: string;
   clientSecret: string;
@@ -24,6 +29,7 @@ export type PluggyConnectionUpdate = {
 
 export const getPluggyCredentials = async (
   db: D1Database,
+  env: PluggyEnv,
   userId: string,
 ): Promise<PluggyCredentials | null> => {
   const [clientId, clientSecret] = await Promise.all([
@@ -31,18 +37,32 @@ export const getPluggyCredentials = async (
     getUserConfigValue(db, userId, 'pluggy_client_secret'),
   ]);
 
-  if (!clientId || !clientSecret) {
+  const resolveCredential = (...values: Array<string | null | undefined>): string => {
+    for (const value of values) {
+      const trimmed = value?.trim();
+      if (trimmed) {
+        return trimmed;
+      }
+    }
+
+    return '';
+  };
+
+  const resolvedClientId: string = resolveCredential(clientId, env.PLUGGY_CLIENT_ID ?? null);
+  const resolvedClientSecret: string = resolveCredential(clientSecret, env.PLUGGY_CLIENT_SECRET ?? null);
+
+  if (!resolvedClientId || !resolvedClientSecret) {
     return null;
   }
 
   return {
-    clientId,
-    clientSecret,
-  };
+    clientId: resolvedClientId,
+    clientSecret: resolvedClientSecret,
+  } as PluggyCredentials;
 };
 
-export const getPluggyClientForUser = async (db: D1Database, userId: string) => {
-  const credentials = await getPluggyCredentials(db, userId);
+export const getPluggyClientForUser = async (db: D1Database, env: PluggyEnv, userId: string) => {
+  const credentials = await getPluggyCredentials(db, env, userId);
   if (!credentials) {
     return null;
   }

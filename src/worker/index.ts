@@ -101,7 +101,7 @@ app.post('/api/pluggy/status', authMiddleware, async (c) => {
 
   try {
     const [credentials, connections] = await Promise.all([
-      getPluggyCredentials(c.env.DB, userId),
+      getPluggyCredentials(c.env.DB, c.env, userId),
       getUserPluggyConnections(c.env.DB, userId)
     ]);
 
@@ -139,7 +139,7 @@ app.post('/api/pluggy/accounts', authMiddleware, async (c) => {
   }
 
   try {
-    const client = await getPluggyClientForUser(c.env.DB, userId);
+    const client = await getPluggyClientForUser(c.env.DB, c.env, userId);
 
     if (!client) {
       return Response.json({
@@ -210,7 +210,7 @@ app.post('/api/pluggy/transactions', authMiddleware, async (c) => {
 
   try {
     const payload = pluggyTransactionsRequestSchema.parse(await c.req.json());
-    const client = await getPluggyClientForUser(c.env.DB, userId);
+    const client = await getPluggyClientForUser(c.env.DB, c.env, userId);
 
     if (!client) {
       return Response.json({
@@ -2264,6 +2264,10 @@ app.options('/api/pluggy/add-connection', (c) => preflightResponse(c.req.header(
 app.post('/api/pluggy/add-connection', authMiddleware, async (c) => {
   const userId = getUserId(c);
 
+  if (!userId) {
+    return errorResponse('Unauthorized', 401);
+  }
+
   try {
     const { itemId } = await c.req.json();
     
@@ -2271,19 +2275,12 @@ app.post('/api/pluggy/add-connection', authMiddleware, async (c) => {
       return errorResponse('Item ID is required', 400);
     }
 
-    // Get user's Pluggy config
-    const clientIdStmt = c.env.DB.prepare("SELECT config_value FROM user_configs WHERE user_id = ? AND config_key = 'pluggy_client_id'");
-    const clientIdResult = await clientIdStmt.bind(userId).first() as any;
-    
-    const clientSecretStmt = c.env.DB.prepare("SELECT config_value FROM user_configs WHERE user_id = ? AND config_key = 'pluggy_client_secret'");
-    const clientSecretResult = await clientSecretStmt.bind(userId).first() as any;
-    
-    if (!clientIdResult?.config_value || !clientSecretResult?.config_value) {
+    const client = await getPluggyClientForUser(c.env.DB, c.env, userId);
+
+    if (!client) {
       return errorResponse('Pluggy credentials not configured', 400);
     }
 
-    const client = new PluggyClient(clientIdResult.config_value as string, clientSecretResult.config_value as string);
-    
     // Get item details from Pluggy
     const item = await client.getItem(itemId.trim());
     
@@ -2381,22 +2378,21 @@ app.post('/api/pluggy/sync/:itemId?', authMiddleware, async (c) => {
   const userId = getUserId(c);
   const itemId = c.req.param('itemId');
 
+  if (!userId) {
+    return errorResponse('Unauthorized', 401);
+  }
+
   // Create a unique sync ID for logging
   const syncId = `sync-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
   try {
     console.log(`[${syncId}] Starting sync for user ${userId}, itemId: ${itemId || 'all'}`);
 
-    // Get user's Pluggy config
-    const clientIdStmt = c.env.DB.prepare("SELECT config_value FROM user_configs WHERE user_id = ? AND config_key = 'pluggy_client_id'");
-    const clientIdResult = await clientIdStmt.bind(userId).first() as any;
-    
-    const clientSecretStmt = c.env.DB.prepare("SELECT config_value FROM user_configs WHERE user_id = ? AND config_key = 'pluggy_client_secret'");
-    const clientSecretResult = await clientSecretStmt.bind(userId).first() as any;
-    
-    if (!clientIdResult?.config_value || !clientSecretResult?.config_value) {
+    const client = await getPluggyClientForUser(c.env.DB, c.env, userId);
+
+    if (!client) {
       console.log(`[${syncId}] Pluggy credentials not configured`);
-      return Response.json({ 
+      return Response.json({
         success: false,
         error: 'Pluggy credentials not configured',
         newTransactions: 0,
@@ -2406,7 +2402,6 @@ app.post('/api/pluggy/sync/:itemId?', authMiddleware, async (c) => {
 
     // Create Pluggy client
     console.log(`[${syncId}] Creating Pluggy client`);
-    const client = new PluggyClient(clientIdResult.config_value as string, clientSecretResult.config_value as string);
     
     let connectionsToSync;
     
